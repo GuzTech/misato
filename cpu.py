@@ -109,6 +109,7 @@ class CPU(Elaboratable):
 
         m.d.comb += pc_next.eq(pc + 4)
         m.d.sync += pc.eq(Mux((format_x == Format.J_type), alu.out, Mux(bubble_next, pc, pc_next)))
+        # m.d.sync += pc.eq(Mux((decoder.format == Format.J_type), alu.out, Mux(bubble_next, pc, pc_next)))
         # m.d.comb += self.imem.adr.eq(pc)
 
         # When we're at the execution stage, then we know what the target address
@@ -116,7 +117,7 @@ class CPU(Elaboratable):
         m.d.comb += self.imem.adr.eq(Mux((format_x == Format.J_type), alu.out, pc))
         m.d.comb += self.imem.cyc.eq(1)
 
-        with m.If(~bubble_next):
+        with m.If((~bubble_next)):
             m.d.comb += self.imem.stb.eq(1)
         with m.Else():
             m.d.comb == self.imem.stb.eq(0)
@@ -165,7 +166,7 @@ class CPU(Elaboratable):
         with m.Else():
             m.d.comb += bubble_next.eq(0)
 
-        m.d.sync += bubble_d.eq(bubble_next)
+        m.d.sync += bubble_d.eq(bubble_next & (~bubble_d))
 
         with m.If(~bubble_d):
             with m.Switch(decoder.format):
@@ -185,7 +186,7 @@ class CPU(Elaboratable):
                     m.d.sync += rs1_value_d.eq(Mux(decoder.u_instr, pc, 0))
                     m.d.sync += rs2_value_d.eq(decoder.imm)                    
                 with m.Case(Format.B_type, Format.J_type):
-                    m.d.sync += rs1_value_d.eq(pc)
+                    m.d.sync += rs1_value_d.eq(pc - 4)
                     m.d.sync += rs2_value_d.eq(decoder.imm)
 
 
@@ -208,42 +209,41 @@ class CPU(Elaboratable):
             m.d.sync += rs1_value_RAW.eq(alu.out)
         with m.Elif(decoder.rs1 == rd_wb):
             m.d.sync += rs1_value_RAW.eq(alu_out_wb)
-        # with m.Else():
-        #     m.d.comb += rs1_value_RAW.eq(rp1.data)
 
         with m.If(decoder.rs2 == rd_x):
-            m.d.comb += rs2_value_RAW.eq(alu.out)
+            m.d.sync += rs2_value_RAW.eq(alu.out)
         with m.Elif(decoder.rs2 == rd_wb):
-            m.d.comb += rs2_value_RAW.eq(alu_out_wb)
-        with m.Else():
-            m.d.comb += rs2_value_RAW.eq(rp2.data)
+            m.d.sync += rs2_value_RAW.eq(alu_out_wb)
 
         m.d.sync += pc_x.eq(pc)
         m.d.sync += bubble_x.eq(bubble_d)
+        # m.d.sync += bubble_x.eq(0)
 
         # ALU signals
         with m.If(~bubble_x):
             with m.Switch(format_x):
                 with m.Case(Format.R_type):
-                    m.d.comb += alu.in1.eq(rs1_value_x)
-                    m.d.comb += alu.in2.eq(rs2_value_x)
+                    with m.If(rd_wb == rd_x):
+                        m.d.comb += alu.in1.eq(rs1_value_RAW)
+                        m.d.comb += alu.in2.eq(rs2_value_RAW)
+                    with m.Else():
+                        m.d.comb += alu.in1.eq(rp1.data)
+                        m.d.comb += alu.in2.eq(rp2.data)
+
                     m.d.comb += alu.funct3.eq(funct3_x)
                     m.d.comb += alu.funct7.eq(funct7_x)
                 with m.Case(Format.I_type):
-                    # m.d.comb += alu.in1.eq(rs1_value_x)
-                    # m.d.comb += alu.in1.eq(rp1.data)
-                    
                     with m.If(rd_wb == rd_x):
                         m.d.comb += alu.in1.eq(rs1_value_RAW)
                     with m.Else():
                         m.d.comb += alu.in1.eq(rp1.data)
 
-                    m.d.comb += alu.in2.eq(imm_x)
+                    m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(funct3_x)
                     # m.d.comb += alu.funct7.eq(0)
                 with m.Case(Format.S_type, Format.U_type):
-                    m.d.comb += alu.in1.eq(rs1_value_x)
-                    m.d.comb += alu.in2.eq(rs2_value_x)
+                    m.d.comb += alu.in1.eq(rs1_value_d)
+                    m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(Funct3.ADD)
                     # m.d.comb += alu.funct7.eq(0)
                 # with m.Case(Format.U_type):
@@ -252,8 +252,8 @@ class CPU(Elaboratable):
                 #     m.d.comb += alu.funct3.eq(Funct3.ADD)
                 #     m.d.comb += alu.funct7.eq(0)
                 with m.Case(Format.J_type):
-                    m.d.comb += alu.in1.eq(rs1_value_x)
-                    m.d.comb += alu.in2.eq(rs2_value_x)
+                    m.d.comb += alu.in1.eq(rs1_value_d)
+                    m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(Funct3.ADD)
 
         ####################
@@ -265,7 +265,8 @@ class CPU(Elaboratable):
         m.d.sync += format_wb.eq(format_x)
         m.d.sync += alu_out_wb.eq(alu.out)
 
-        m.d.sync += bubble_wb.eq(bubble_x)
+        # m.d.sync += bubble_wb.eq(bubble_x)
+        m.d.sync += bubble_wb.eq(0)
 
         with m.If((~bubble_wb) & (rd_wb != 0)):
             with m.Switch(format_wb):
@@ -298,7 +299,7 @@ if __name__ == "__main__":
         0x0000_0004: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
         0x0000_0008: 0b0000_0000_0010_00001_000_00001_0010011, # ADDI R1 = R1 + 2
         0x0000_000C: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
-        0x0000_0010: 0b1111_1110_1101_1111_1111_00000_1101111, # JAL R0, -16
+        0x0000_0010: 0b1111_1111_0001_1111_1111_00000_1101111, # JAL R0, -0x10
     }
 
     with top.If(cpu.imem.cyc & cpu.imem.stb):
