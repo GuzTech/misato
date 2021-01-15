@@ -107,14 +107,22 @@ class CPU(Elaboratable):
         pc      = Signal(self.xlen.value)
         pc_next = Signal(self.xlen.value)
 
-        m.d.comb += pc_next.eq(pc + 4)
-        m.d.sync += pc.eq(Mux((format_x == Format.J_type), alu.out, Mux(bubble_next, pc, pc_next)))
+        j_type_d_x = Signal()
+        m.d.comb += j_type_d_x.eq((decoder.format == Format.J_type) & (format_x == Format.J_type))
+
+        m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, pc + 4))
+        # m.d.sync += pc.eq(Mux((format_x == Format.J_type), alu.out, Mux(bubble_next, pc, pc_next)))
+        # m.d.sync += pc.eq(Mux(j_type_d_x, alu.out, pc_next))
+        m.d.sync += pc.eq(pc_next)
+        # m.d.sync += pc.eq(Mux(j_type_d_x, alu.out, Mux(bubble_next, pc, pc_next)))
+
         # m.d.sync += pc.eq(Mux((decoder.format == Format.J_type), alu.out, Mux(bubble_next, pc, pc_next)))
         # m.d.comb += self.imem.adr.eq(pc)
 
         # When we're at the execution stage, then we know what the target address
         # of the J-type instruction is.
-        m.d.comb += self.imem.adr.eq(Mux((format_x == Format.J_type), alu.out, pc))
+        # m.d.comb += self.imem.adr.eq(Mux((format_x == Format.J_type), alu.out, pc))
+        m.d.comb += self.imem.adr.eq(Mux(j_type_d_x, alu.out, pc))
         m.d.comb += self.imem.cyc.eq(1)
 
         with m.If((~bubble_next)):
@@ -166,7 +174,8 @@ class CPU(Elaboratable):
         with m.Else():
             m.d.comb += bubble_next.eq(0)
 
-        m.d.sync += bubble_d.eq(bubble_next & (~bubble_d))
+        # m.d.sync += bubble_d.eq(bubble_next & (~bubble_d))
+        m.d.sync += bubble_d.eq(bubble_next)
 
         with m.If(~bubble_d):
             with m.Switch(decoder.format):
@@ -265,8 +274,8 @@ class CPU(Elaboratable):
         m.d.sync += format_wb.eq(format_x)
         m.d.sync += alu_out_wb.eq(alu.out)
 
-        # m.d.sync += bubble_wb.eq(bubble_x)
-        m.d.sync += bubble_wb.eq(0)
+        m.d.sync += bubble_wb.eq(bubble_x)
+        # m.d.sync += bubble_wb.eq(0)
 
         with m.If((~bubble_wb) & (rd_wb != 0)):
             with m.Switch(format_wb):
@@ -299,7 +308,7 @@ if __name__ == "__main__":
         0x0000_0004: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
         0x0000_0008: 0b0000_0000_0010_00001_000_00001_0010011, # ADDI R1 = R1 + 2
         0x0000_000C: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
-        0x0000_0010: 0b1111_1111_0001_1111_1111_00000_1101111, # JAL R0, -0x10
+        0x0000_0010: 0b1111_1111_0001_1111_1111_00001_1101111, # JAL R1, -0x10
     }
 
     with top.If(cpu.imem.cyc & cpu.imem.stb):
