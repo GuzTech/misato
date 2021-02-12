@@ -1,3 +1,5 @@
+from typing import List
+
 from nmigen import *
 from nmigen.build import Platform
 from nmigen.back import verilog
@@ -8,8 +10,6 @@ from isa import *
 from decoder import Decoder
 from alu import ALU
 from branch import Branch, BInsn
-
-from typing import List
 
 
 class CPU(Elaboratable):
@@ -114,11 +114,13 @@ class CPU(Elaboratable):
 
         # Instruction fetch stage signals
         insn     = Signal(self.xlen.value, reset=0x13) # ADDI R0, R0, 0
+        cyc      = Signal()
+        stb      = Signal()
+        addr     = Signal(self.xlen.value, reset=0)
         cyc_prev = Signal(reset=0)
         stb_prev = Signal(reset=0)
 
         # Decode stage signals
-        pc_d        = Signal(self.xlen.value)
         rs1_value_d = Signal(self.xlen.value)
         rs2_value_d = Signal(self.xlen.value)
         funct3_x    = Signal(Funct3)
@@ -146,6 +148,11 @@ class CPU(Elaboratable):
         format_wb = Signal(Format)
         bubble_wb = Signal(reset=1)
 
+        # Wishbone interface
+        # m.d.sync += self.imem.cyc.eq(cyc)
+        # m.d.sync += self.imem.stb.eq(stb)
+        # m.d.sync += self.imem.adr.eq(addr)
+
         # Program counter
         pc      = Signal(self.xlen.value)
         pc_next = Signal(self.xlen.value)
@@ -156,31 +163,34 @@ class CPU(Elaboratable):
                   (format_wb != Format.J_type)):
             m.d.comb += branch_addr_known.eq(1)
             m.d.comb += pc_next.eq(alu.out + 4)
-        with m.Elif(format_x == Format.B_type & branch.take_branch):
+        with m.Elif(branch_x):
             m.d.comb += branch_addr_known.eq(1)
             m.d.comb += pc_next.eq(alu.out)
         with m.Else():
             m.d.comb += branch_addr_known.eq(0)
-            m.d.comb += pc_next.eq(pc_d + 4)
+            m.d.comb += pc_next.eq(pc + 4)
+
+        # m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, Mux(branch_x, alu.out, pc + 4)))
+        m.d.sync += pc.eq(pc_next)
 
         j_type_d_x = Signal()
         m.d.comb += j_type_d_x.eq((decoder.format == Format.J_type) &
                                   (format_x == Format.J_type) &
                                   (format_wb != Format.J_type))
 
-        # m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, Mux(branch_x, alu.out, pc_d + 4)))
-        m.d.sync += pc_d.eq(pc_next)
-        m.d.sync += pc.eq(pc_d)
-
         # When we're at the execution stage, then we know what
         # the target address of the J-type instruction is.
-        m.d.comb += self.imem.adr.eq(Mux(j_type_d_x, alu.out, pc_d))
+        m.d.comb += self.imem.adr.eq(Mux(j_type_d_x, alu.out, pc))
         m.d.comb += self.imem.cyc.eq(1)
+        # m.d.comb += addr.eq(Mux(j_type_d_x, alu.out, pc))
+        # m.d.comb += cyc.eq(1)
 
         with m.If((~bubble_next)):
             m.d.comb += self.imem.stb.eq(1)
+            # m.d.comb += stb.eq(1)
         with m.Else():
             m.d.comb == self.imem.stb.eq(0)
+            # m.d.comb == stb.eq(0)
         
         m.d.sync += cyc_prev.eq(self.imem.cyc)
         m.d.sync += stb_prev.eq(self.imem.stb)
@@ -270,13 +280,13 @@ class CPU(Elaboratable):
                     m.d.comb += rp1.addr.eq(0)
                     m.d.comb += rp2.addr.eq(0)
                 with m.Case(Format.B_type):
-                    m.d.sync += rs1_value_d.eq(pc - 4)
+                    m.d.sync += rs1_value_d.eq(pc - 8)
                     m.d.sync += rs2_value_d.eq(decoder.imm)
 
                     m.d.comb += rp1.addr.eq(decoder.rs1)
                     m.d.comb += rp2.addr.eq(decoder.rs2)
                 with m.Case(Format.J_type):
-                    m.d.sync += rs1_value_d.eq(pc - 4)
+                    m.d.sync += rs1_value_d.eq(pc - 8)
                     m.d.sync += rs2_value_d.eq(decoder.imm)
 
                     m.d.comb += rp1.addr.eq(0)
@@ -446,11 +456,11 @@ if __name__ == "__main__":
     # }
 
     mem = {
-        0x0000_0000: 0b0000_0000_0010_00000_000_00001_0010011, # ADDI R1 = R0 + 2
-        0x0000_0004: 0b0000_000_00010_00001_000_01100_1100011, # BEQ R1 == R2, +0x0C
-        0x0000_0008: 0b0000_0000_0001_00010_000_00010_0010011, # ADDI R2 = R2 + 1
-        0x0000_000C: 0b1111_1111_1001_1111_1111_00000_1101111, # JAL R0, -0x08
-        0x0000_0010: 0b1111_1111_0001_1111_1111_00000_1101111, # JAL R0, -0x10
+        0x0000_0000: 0b000000000010_00000_000_00001_0010011,  # ADDI R1 = R0 + 2
+        0x0000_0004: 0b0000001_00010_00001_000_00000_1100011, # BEQ R1 == R2, +0x20
+        0x0000_0008: 0b000000000001_00010_000_00010_0010011,  # ADDI R2 = R2 + 1
+        0x0000_000C: 0b1_1111111100_1_11111111_00000_1101111, # JAL R0, -0x08
+        0x0000_0024: 0b1_1111101110_1_11111111_00000_1101111, # JAL R0, -0x24
     }
 
     with top.If(cpu.imem.cyc & cpu.imem.stb):
@@ -476,9 +486,11 @@ if __name__ == "__main__":
 
         for _ in range(len(mem)):
             yield
+            # assert not (yield cpu.trap)
         
         for _ in range(20):
             yield
+            # assert not (yield cpu.trap)
         
     sim = Simulator(top)
     sim.add_clock(1e-6)
