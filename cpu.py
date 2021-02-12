@@ -116,7 +116,6 @@ class CPU(Elaboratable):
         insn     = Signal(self.xlen.value, reset=0x13) # ADDI R0, R0, 0
         cyc_prev = Signal(reset=0)
         stb_prev = Signal(reset=0)
-        num_reqs_imem = Signal(8)
 
         # Decode stage signals
         pc_d        = Signal(self.xlen.value)
@@ -151,13 +150,25 @@ class CPU(Elaboratable):
         pc      = Signal(self.xlen.value)
         pc_next = Signal(self.xlen.value)
 
+        branch_addr_known = Signal()
+        with m.If((decoder.format == Format.J_type) &
+                  (format_x == Format.J_type) &
+                  (format_wb != Format.J_type)):
+            m.d.comb += branch_addr_known.eq(1)
+            m.d.comb += pc_next.eq(alu.out + 4)
+        with m.Elif(format_x == Format.B_type & branch.take_branch):
+            m.d.comb += branch_addr_known.eq(1)
+            m.d.comb += pc_next.eq(alu.out)
+        with m.Else():
+            m.d.comb += branch_addr_known.eq(0)
+            m.d.comb += pc_next.eq(pc_d + 4)
+
         j_type_d_x = Signal()
         m.d.comb += j_type_d_x.eq((decoder.format == Format.J_type) &
                                   (format_x == Format.J_type) &
                                   (format_wb != Format.J_type))
 
-        # m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, pc + 4))
-        m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, Mux(branch_x, alu.out, pc_d + 4)))
+        # m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, Mux(branch_x, alu.out, pc_d + 4)))
         m.d.sync += pc_d.eq(pc_next)
         m.d.sync += pc.eq(pc_d)
 
@@ -170,11 +181,6 @@ class CPU(Elaboratable):
             m.d.comb += self.imem.stb.eq(1)
         with m.Else():
             m.d.comb == self.imem.stb.eq(0)
-
-        with m.If(self.imem.cyc & self.imem.stb & (~self.imem.ack)):
-            m.d.sync += num_reqs_imem.eq(num_reqs_imem + 1)
-        with m.Elif(~(self.imem.cyc & self.imem.stb) & self.imem.ack):
-            m.d.sync += num_reqs_imem.eq(num_reqs_imem - 1)
         
         m.d.sync += cyc_prev.eq(self.imem.cyc)
         m.d.sync += stb_prev.eq(self.imem.stb)
@@ -214,22 +220,6 @@ class CPU(Elaboratable):
         m.d.sync += rd_x.eq(decoder.rd)
         m.d.sync += imm_x.eq(decoder.imm)
         m.d.sync += u_instr_x.eq(decoder.u_instr)
-        
-        # with m.If((decoder.format == Format.J_type) | (format_x == Format.J_type)):
-        #     with m.If(format_wb != Format.J_type):
-        #         m.d.sync += bubble_d.eq(1)
-        #     with m.Else():
-        #         m.d.sync += bubble_d.eq(0)
-        # with m.Else():
-        #     m.d.sync += bubble_d.eq(0)
-
-        # with m.If((decoder.format == Format.J_type) | (format_x == Format.J_type)):
-        #     with m.If(format_wb != Format.J_type):
-        #         m.d.comb += bubble_next.eq(1)
-        #     with m.Else():
-        #         m.d.comb += bubble_next.eq(0)
-        # with m.Else():
-        #     m.d.comb += bubble_next.eq(0)
 
         # with m.If(self.stall):
         #     m.d.comb += bubble_next.eq(1)
@@ -251,6 +241,8 @@ class CPU(Elaboratable):
         #     m.d.comb += bubble_next.eq(1)
         # with m.Elif((~cyc_prev) & (~stb_prev) & (num_reqs_imem == 0)):
         #     m.d.comb += bubble_next.eq(1)
+        with m.Elif(branch_x):
+            m.d.comb += bubble_next.eq(1)
         with m.Else():
             m.d.comb += bubble_next.eq(0)
 
@@ -455,7 +447,7 @@ if __name__ == "__main__":
 
     mem = {
         0x0000_0000: 0b0000_0000_0010_00000_000_00001_0010011, # ADDI R1 = R0 + 2
-        0x0000_0004: 0b0000_000_00010_00001_000_10100_1100011, # BEQ R1 == R2, +0x0C
+        0x0000_0004: 0b0000_000_00010_00001_000_01100_1100011, # BEQ R1 == R2, +0x0C
         0x0000_0008: 0b0000_0000_0001_00010_000_00010_0010011, # ADDI R2 = R2 + 1
         0x0000_000C: 0b1111_1111_1001_1111_1111_00000_1101111, # JAL R0, -0x08
         0x0000_0010: 0b1111_1111_0001_1111_1111_00000_1101111, # JAL R0, -0x10

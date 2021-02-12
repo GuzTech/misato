@@ -1,0 +1,91 @@
+[*]
+[*] GTKWave Analyzer v3.3.108 (w)1999-2020 BSI
+[*] Thu Feb 11 17:54:53 2021
+[*]
+[dumpfile] "/home/oguz286/Projects/FPGA/nMigen/misato/cpu.vcd"
+[dumpfile_mtime] "Thu Feb 11 17:48:49 2021"
+[dumpfile_size] 17909
+[savefile] "/home/oguz286/Projects/FPGA/nMigen/misato/cpu.gtkw"
+[timestart] 0
+[size] 959 1024
+[pos] -1 -1
+*-20.713758 2750000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] top.
+[treeopen] top.cpu.
+[sst_width] 42
+[signals_width] 261
+[sst_expanded] 0
+[sst_vpaned_height] 298
+@28
+[color] 2
+top.cpu.clk
+@22
+top.cpu.imem__adr[31:0]
+top.cpu.imem__dat_r[31:0]
+@28
+top.cpu.imem__cyc
+top.cpu.imem__stb
+top.imem__ack
+@4022
+[color] 1
+^>1 /home/oguz286/Projects/FPGA/nMigen/misato/riscv-filter.py
+top.cpu.insn[31:0]
+@28
+top.cpu.bubble_next
+top.cpu.bubble_d
+top.cpu.bubble_x
+top.cpu.bubble_wb
+@22
+top.cpu.imm[31:0]
+@28
+top.cpu.funct3
+top.cpu.j_type_d_x
+top.cpu.format
+top.cpu.format_x
+top.cpu.format_wb
+@22
+top.cpu.pc[31:0]
+top.cpu.pc_next[31:0]
+@28
+top.cpu.branch_x
+top.cpu.trap
+@22
+top.cpu.rs1_value_RAW[31:0]
+top.cpu.rs1_value_d[31:0]
+top.cpu.rs2_value_RAW[31:0]
+top.cpu.rs2_value_d[31:0]
+@28
+top.cpu.take_branch
+@200
+-====== DECODER ======
+@28
+top.cpu.decoder.opcode
+top.cpu.decoder.i_type
+top.cpu.decoder.b_type
+top.cpu.decoder.j_type
+@24
+top.cpu.decoder.rs1[4:0]
+top.cpu.decoder.rs2[4:0]
+top.cpu.decoder.rd[4:0]
+@200
+-===== ALU =====
+@421
+top.cpu.alu.in1[31:0]
+top.cpu.alu.in2[31:0]
+top.cpu.alu.out[31:0]
+@200
+-====== REGS ======
+@22
+top.cpu.wp.memory(0)[31:0]
+top.cpu.wp.memory(1)[31:0]
+top.cpu.wp.memory(2)[31:0]
+@28
+top.cpu.wp.regfile_w_en
+@24
+top.cpu.wp.regfile_w_addr[4:0]
+@22
+top.cpu.wp.regfile_w_data[31:0]
+top.cpu.rp1.regfile_r_addr[4:0]
+top.cpu.rp2.regfile_r_addr[4:0]
+[pattern_trace] 1
+[pattern_trace] 0
