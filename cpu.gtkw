@@ -1,19 +1,19 @@
 [*]
 [*] GTKWave Analyzer v3.3.108 (w)1999-2020 BSI
-[*] Sat Feb 13 00:33:27 2021
+[*] Sat Feb 13 14:16:42 2021
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Sat Feb 13 00:32:51 2021"
-[dumpfile_size] 16764
+[dumpfile_mtime] "Sat Feb 13 14:14:10 2021"
+[dumpfile_size] 20635
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.gtkw"
 [timestart] 0
 [size] 1920 1054
 [pos] -1 -1
-*-21.713758 13980000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-22.251596 4050000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] top.
 [treeopen] top.cpu.
 [sst_width] 40
-[signals_width] 330
+[signals_width] 311
 [sst_expanded] 0
 [sst_vpaned_height] 298
 @28
@@ -26,7 +26,7 @@ top.cpu.imem__dat_r[31:0]
 top.cpu.imem__cyc
 top.cpu.imem__stb
 top.imem__ack
-@4022
+@4023
 [color] 1
 ^>1 /home/oguz286/Projects/FPGA/nmigen/misato/riscv-filter.py
 top.cpu.insn[31:0]
@@ -45,11 +45,10 @@ top.cpu.imm[31:0]
 @28
 top.cpu.funct3
 top.cpu.j_type_d_x
-@29
 top.cpu.format
-@28
 top.cpu.format_x
 top.cpu.format_wb
+[color] 2
 top.cpu.branch_x
 [color] 1
 top.cpu.trap
@@ -58,8 +57,6 @@ top.cpu.rs1_value_RAW[31:0]
 top.cpu.rs1_value_d[31:0]
 top.cpu.rs2_value_RAW[31:0]
 top.cpu.rs2_value_d[31:0]
-@28
-top.cpu.take_branch
 @200
 -====== DECODER ======
 @28
@@ -77,6 +74,15 @@ top.cpu.decoder.rd[4:0]
 top.cpu.alu.in1[31:0]
 top.cpu.alu.in2[31:0]
 top.cpu.alu.out[31:0]
+@200
+-===== BRANCH =====
+@28
+top.cpu.branch.br_insn
+@22
+top.cpu.branch.in1[31:0]
+top.cpu.branch.in2[31:0]
+@28
+top.cpu.branch.take_branch
 @200
 -====== REGS ======
 @22

@@ -28,7 +28,7 @@ class Decoder(Elaboratable):
         self.rd = Signal(5)
         self.funct3 = Signal(Funct3)
         self.funct7 = Signal(Funct7)
-        self.u_instr = Signal(U_Instr)
+        self.u_instr = Signal(U_Type)
         self.trap = Signal()
 
         # Config

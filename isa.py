@@ -59,6 +59,11 @@ class U_Instr(Enum):
     AUIPC = 0b0010111
 
 
+class U_Type(Enum):
+    LUI   = 0
+    AUIPC = 1
+
+
 class J_Instr(Enum):
     JAL  = 0b1101111
     JALR = 0b1100111
@@ -109,13 +114,13 @@ def RV32_U(imm: int, rd: int, opcode: U_Instr):
 
 
 def RV32_B(imm: int, rs1: int, rs2: int, funct3: Funct3):
-    return (((imm          & 0x1000) << 31) |
+    return (((imm          & 0x1000) << 19) |
             ((imm          & 0x07E0) << 20) |
             ((rs2          & 0x001F) << 20) |
             ((rs1          & 0x001F) << 15) |
             ((funct3.value & 0x0003) << 12) |
-            ((imm          & 0x001E) <<  8) |
-            ((imm          & 0x0800) <<  7) |
+            ((imm          & 0x001E) <<  7) |
+            ((imm          & 0x0800) >>  4) |
             Opcode.BRANCH.value)
 
 

@@ -257,13 +257,9 @@ class CPU(Elaboratable):
             with m.Switch(decoder.format):
                 with m.Case(Format.R_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
-                    # m.d.sync += rs1_value_x.eq(rs1_value_RAW)
                     m.d.comb += rp2.addr.eq(decoder.rs2)
-                    # m.d.sync += rs2_value_x.eq(rs2_value_RAW)
                 with m.Case(Format.I_type, Format.S_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
-                    # m.d.sync += rs1_value_x.eq(rs1_value_RAW)
-                    # m.d.sync += rs2_value_x.eq(decoder.imm)
                     m.d.comb += rp2.addr.eq(0)
                     m.d.sync += rs2_value_d.eq(decoder.imm)
                 with m.Case(Format.U_type):
@@ -459,12 +455,23 @@ if __name__ == "__main__":
     #     0x0000_0004: RV32_J(imm=-0x4, rd=0, opcode=J_Instr.JAL),
     # }
 
+    # Works
+    # mem = {
+    #     0x0000_0000: RV32_I(imm=2, rs1=0, rd=1, funct3=Funct3.ADD),
+    #     0x0000_0004: RV32_B(imm=0x20, rs1=1, rs2=2, funct3=Funct3.BEQ),
+    #     0x0000_0008: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
+    #     0x0000_000C: RV32_J(imm=-0x08, rd=0, opcode=J_Instr.JAL),
+    #     0x0000_0024: RV32_J(imm=-0x24, rd=0, opcode=J_Instr.JAL),
+    # }
+
+    # Works
     mem = {
-        0x0000_0000: RV32_I(imm=2, rs1=0, rd=1, funct3=Funct3.ADD),
-        0x0000_0004: RV32_B(imm=0x20, rs1=1, rs2=2, funct3=Funct3.BEQ),
-        0x0000_0008: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
-        0x0000_000C: RV32_J(imm=-0x08, rd=0, opcode=J_Instr.JAL),
-        0x0000_0024: RV32_J(imm=-0x24, rd=0, opcode=J_Instr.JAL),
+        0x0000_0000: RV32_I(imm= 0x01, rs1=0, rd =1, funct3=Funct3.ADD),
+        0x0000_0004: RV32_I(imm= 0x01, rs1=1, rd =1, funct3=Funct3.SLL),
+        0x0000_0008: RV32_B(imm= 0x1C, rs1=1, rs2=2, funct3=Funct3.BEQ),
+        0x0000_000C: RV32_I(imm= 0x01, rs1=2, rd =2, funct3=Funct3.ADD),
+        0x0000_0010: RV32_J(imm=-0x08, rd =0, opcode=J_Instr.JAL),
+        0x0000_0024: RV32_J(imm=-0x24, rd =0, opcode=J_Instr.JAL),
     }
 
     with top.If(cpu.imem.cyc & cpu.imem.stb):
