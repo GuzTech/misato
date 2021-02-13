@@ -113,7 +113,7 @@ class CPU(Elaboratable):
         m.submodules.wp  = wp  = regfile.write_port()
 
         # Instruction fetch stage signals
-        insn     = Signal(self.xlen.value, reset=0x13) # ADDI R0, R0, 0
+        insn     = Signal(self.xlen.value, reset=NOP)
         cyc      = Signal()
         stb      = Signal()
         addr     = Signal(self.xlen.value, reset=0)
@@ -181,6 +181,7 @@ class CPU(Elaboratable):
         # When we're at the execution stage, then we know what
         # the target address of the J-type instruction is.
         m.d.comb += self.imem.adr.eq(Mux(j_type_d_x, alu.out, pc))
+        # m.d.comb += self.imem.adr.eq(pc)
         m.d.comb += self.imem.cyc.eq(1)
         # m.d.comb += addr.eq(Mux(j_type_d_x, alu.out, pc))
         # m.d.comb += cyc.eq(1)
@@ -200,7 +201,10 @@ class CPU(Elaboratable):
         # cycle instead of checking if we have an outstanding
         # instruction fetch.
         # with m.If(cyc_prev & stb_prev & self.imem.ack):
-        with m.If(cyc_prev & self.imem.stb & self.imem.ack):
+        with m.If((format_x == Format.B_type) & (branch_x)):
+            m.d.sync += insn.eq(NOP)
+        with m.Elif(cyc_prev & self.imem.stb & self.imem.ack):
+        # with m.If(cyc_prev & self.imem.stb & self.imem.ack):
             # TODO: Try to use self.imem.dat_r combinatorially
             # whenever possible, but when self.imem.ack is 0,
             # then use the registered insn.
@@ -224,19 +228,13 @@ class CPU(Elaboratable):
             self.dmem.sel.eq(0)
         ]
 
-        m.d.sync += format_x.eq(decoder.format)
+        m.d.sync += format_x.eq(Mux(branch_x, Format.I_type, decoder.format))
         m.d.sync += funct3_x.eq(decoder.funct3)
         m.d.sync += funct7_x.eq(decoder.funct7)
-        m.d.sync += rd_x.eq(decoder.rd)
+        m.d.sync += rd_x.eq(Mux(branch_x, 0, decoder.rd))
         m.d.sync += imm_x.eq(decoder.imm)
         m.d.sync += u_instr_x.eq(decoder.u_instr)
 
-        # with m.If(self.stall):
-        #     m.d.comb += bubble_next.eq(1)
-        # with m.If((~self.imem.ack) & (num_reqs_imem == 0)):# & self.imem.stb & self.imem.cyc):
-        # with m.If((~stb_prev)):
-            # m.d.comb += bubble_next.eq(1)
-        # with m.Elif(decoder.format == Format.J_type):
         with m.If(decoder.format == Format.J_type):
             # If this is the very first stage that
             # is processing the J-type instruction
@@ -247,10 +245,6 @@ class CPU(Elaboratable):
                 m.d.comb += bubble_next.eq(1)
             with m.Else():
                 m.d.comb += bubble_next.eq(0)
-        # with m.Elif(self.imem.cyc & (~self.imem.stb) & (self.imem.ack)):
-        #     m.d.comb += bubble_next.eq(1)
-        # with m.Elif((~cyc_prev) & (~stb_prev) & (num_reqs_imem == 0)):
-        #     m.d.comb += bubble_next.eq(1)
         with m.Elif(branch_x):
             m.d.comb += bubble_next.eq(1)
         with m.Else():
@@ -258,7 +252,8 @@ class CPU(Elaboratable):
 
         m.d.sync += bubble_d.eq(bubble_next)
 
-        with m.If(~bubble_d):
+        with m.If((~bubble_d) & (~branch_x)):
+        # with m.If(~bubble_d):
             with m.Switch(decoder.format):
                 with m.Case(Format.R_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
@@ -291,6 +286,15 @@ class CPU(Elaboratable):
 
                     m.d.comb += rp1.addr.eq(0)
                     m.d.comb += rp2.addr.eq(0)
+        with m.Else():
+            m.d.comb += [
+                rp1.addr.eq(0),
+                rp2.addr.eq(0),
+            ]
+            m.d.sync += [
+                rs1_value_d.eq(0),
+                rs2_value_d.eq(0),
+            ]
 
 
         #################
@@ -451,16 +455,16 @@ if __name__ == "__main__":
 
     # Works
     # mem = {
-    #     0x0000_0000: 0b0000_0000_0001_00010_000_00010_0010011, # ADDI R2 = R2 + 1
-    #     0x0000_0004: 0b1111_1111_1101_1111_1111_00000_1101111, # JAL R0, -0x04
+    #     0x0000_0000: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
+    #     0x0000_0004: RV32_J(imm=-0x4, rd=0, opcode=J_Instr.JAL),
     # }
 
     mem = {
-        0x0000_0000: 0b000000000010_00000_000_00001_0010011,  # ADDI R1 = R0 + 2
-        0x0000_0004: 0b0000001_00010_00001_000_00000_1100011, # BEQ R1 == R2, +0x20
-        0x0000_0008: 0b000000000001_00010_000_00010_0010011,  # ADDI R2 = R2 + 1
-        0x0000_000C: 0b1_1111111100_1_11111111_00000_1101111, # JAL R0, -0x08
-        0x0000_0024: 0b1_1111101110_1_11111111_00000_1101111, # JAL R0, -0x24
+        0x0000_0000: RV32_I(imm=2, rs1=0, rd=1, funct3=Funct3.ADD),
+        0x0000_0004: RV32_B(imm=0x20, rs1=1, rs2=2, funct3=Funct3.BEQ),
+        0x0000_0008: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
+        0x0000_000C: RV32_J(imm=-0x08, rd=0, opcode=J_Instr.JAL),
+        0x0000_0024: RV32_J(imm=-0x24, rd=0, opcode=J_Instr.JAL),
     }
 
     with top.If(cpu.imem.cyc & cpu.imem.stb):
@@ -486,11 +490,11 @@ if __name__ == "__main__":
 
         for _ in range(len(mem)):
             yield
-            # assert not (yield cpu.trap)
+            assert not (yield cpu.trap)
         
-        for _ in range(20):
+        for _ in range(30):
             yield
-            # assert not (yield cpu.trap)
+            assert not (yield cpu.trap)
         
     sim = Simulator(top)
     sim.add_clock(1e-6)
