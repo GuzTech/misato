@@ -4,6 +4,10 @@ from nmigen import *
 from nmigen.build import Platform
 
 
+# ADDI R0, R0, 0
+NOP = 0x13
+
+
 @unique
 class XLEN(Enum):
     RV32 = 32
@@ -51,8 +55,13 @@ class Funct7(Enum):
 
 
 class U_Instr(Enum):
-    LUI   = 0
-    AUIPC = 1
+    LUI   = 0b0110111
+    AUIPC = 0b0010111
+
+
+class J_Instr(Enum):
+    JAL  = 0b1101111
+    JALR = 0b1100111
 
 
 @unique
@@ -65,3 +74,55 @@ class Instruction(Enum):
     AND = 5
     OR = 6
     XOR = 7
+
+
+def RV32_R(rs1: int, rs2: int, rd: int, funct3: Funct3, funct7: Funct7):
+    return (((funct7.value & 0x7F) << 25) |
+            ((rs2          & 0x1F) << 20) |
+            ((rs1          & 0x1F) << 15) |
+            ((funct3.value & 0x03) << 12) |
+            ((rd           & 0x1F) <<  7) |
+            Opcode.OP.value)
+
+
+def RV32_I(imm: int, rs1: int, rd: int, funct3: Funct3):
+    return (((imm          & 0xFFF) << 20) |
+            ((rs1          & 0x01F) << 15) |
+            ((funct3.value & 0x003) << 12) |
+            ((rd           & 0x01F) <<  7) |
+            Opcode.OP_IMM.value)
+
+
+def RV32_S(imm: int, rs1: int, rs2: int, funct3: Funct3):
+    return (((imm          & 0x230) << 20) |
+            ((rs2          & 0x01F) << 20) |
+            ((rs1          & 0x01F) << 15) |
+            ((funct3.value & 0x003) << 12) |
+            ((imm          & 0x01F) <<  7) |
+            Opcode.STORE.value)
+
+
+def RV32_U(imm: int, rd: int, opcode: U_Instr):
+    return ((imm & 0xFFFFF000) |
+            ((rd  & 0x1F) << 7) |
+            opcode.value)
+
+
+def RV32_B(imm: int, rs1: int, rs2: int, funct3: Funct3):
+    return (((imm          & 0x1000) << 31) |
+            ((imm          & 0x07E0) << 20) |
+            ((rs2          & 0x001F) << 20) |
+            ((rs1          & 0x001F) << 15) |
+            ((funct3.value & 0x0003) << 12) |
+            ((imm          & 0x001E) <<  8) |
+            ((imm          & 0x0800) <<  7) |
+            Opcode.BRANCH.value)
+
+
+def RV32_J(imm: int, rd: int, opcode: J_Instr):
+    return ((((imm & 0x100000) >> 20) << 31) |
+            (((imm & 0x0007FE) >>  1) << 21) |
+            (((imm & 0x000800) >> 11) << 20) |
+            (((imm & 0x0FF000) >> 12) << 12) |
+            (((rd  & 0x00001F) >>  0) <<  7) |
+            opcode.value)
