@@ -85,7 +85,7 @@ def RV32_R(rs1: int, rs2: int, rd: int, funct3: Funct3, funct7: Funct7):
     return (((funct7.value & 0x7F) << 25) |
             ((rs2          & 0x1F) << 20) |
             ((rs1          & 0x1F) << 15) |
-            ((funct3.value & 0x03) << 12) |
+            ((funct3.value & 0x07) << 12) |
             ((rd           & 0x1F) <<  7) |
             Opcode.OP.value)
 
@@ -93,7 +93,7 @@ def RV32_R(rs1: int, rs2: int, rd: int, funct3: Funct3, funct7: Funct7):
 def RV32_I(imm: int, rs1: int, rd: int, funct3: Funct3):
     return (((imm          & 0xFFF) << 20) |
             ((rs1          & 0x01F) << 15) |
-            ((funct3.value & 0x003) << 12) |
+            ((funct3.value & 0x007) << 12) |
             ((rd           & 0x01F) <<  7) |
             Opcode.OP_IMM.value)
 
@@ -102,14 +102,14 @@ def RV32_S(imm: int, rs1: int, rs2: int, funct3: Funct3):
     return (((imm          & 0x230) << 20) |
             ((rs2          & 0x01F) << 20) |
             ((rs1          & 0x01F) << 15) |
-            ((funct3.value & 0x003) << 12) |
+            ((funct3.value & 0x007) << 12) |
             ((imm          & 0x01F) <<  7) |
             Opcode.STORE.value)
 
 
 def RV32_U(imm: int, rd: int, opcode: U_Instr):
-    return ((imm & 0xFFFFF000) |
-            ((rd  & 0x1F) << 7) |
+    return (((imm & 0xFFFFF) << 12) |
+            ((rd  & 0x1F)    <<  7) |
             opcode.value)
 
 
@@ -118,7 +118,7 @@ def RV32_B(imm: int, rs1: int, rs2: int, funct3: Funct3):
             ((imm          & 0x07E0) << 20) |
             ((rs2          & 0x001F) << 20) |
             ((rs1          & 0x001F) << 15) |
-            ((funct3.value & 0x0003) << 12) |
+            ((funct3.value & 0x0007) << 12) |
             ((imm          & 0x001E) <<  7) |
             ((imm          & 0x0800) >>  4) |
             Opcode.BRANCH.value)
