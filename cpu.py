@@ -5,11 +5,13 @@ from nmigen.build import Platform
 from nmigen.back import verilog
 from nmigen.sim import Simulator, Settle
 from nmigen_soc.wishbone import *
+from nmigen_boards.ulx3s import *
 
 from isa import *
 from decoder import Decoder
 from alu import ALU
 from branch import Branch, BInsn
+from rom import ROM
 
 
 class CPU(Elaboratable):
@@ -23,6 +25,7 @@ class CPU(Elaboratable):
 
         # Outputs
         self.trap = Signal()
+        self.reg  = Signal(32)
 
         # Configuration
         self.xlen = xlen
@@ -107,10 +110,14 @@ class CPU(Elaboratable):
         m.submodules.branch  = branch  = Branch(self.xlen)
 
         # Register file
-        regfile = Memory(width=self.xlen.value, depth=32)#, init=[(i+3) for i in range(32)])
+        regfile = Memory(width=self.xlen.value, depth=32)
         m.submodules.rp1 = rp1 = regfile.read_port()
         m.submodules.rp2 = rp2 = regfile.read_port()
         m.submodules.wp  = wp  = regfile.write_port()
+
+        m.submodules.rp3 = rp3 = regfile.read_port()
+        m.d.comb += rp3.addr.eq(2)
+        m.d.comb += self.reg.eq(rp3.data)
 
         # Instruction fetch stage signals
         insn     = Signal(self.xlen.value, reset=NOP)
@@ -132,8 +139,6 @@ class CPU(Elaboratable):
         # Execute stage signals
         rs1_RAW     = Signal()
         rs2_RAW     = Signal()
-        rs1_value_x = Signal(self.xlen.value)
-        rs2_value_x = Signal(self.xlen.value)
         pc_x        = Signal(self.xlen.value)
         rd_x        = Signal(5)
         format_x    = Signal(Format)
@@ -144,7 +149,6 @@ class CPU(Elaboratable):
 
         # Write-back stage signals
         pc_wb     = Signal(self.xlen.value)
-        rd_wb     = Signal(5)
         format_wb = Signal(Format)
         bubble_wb = Signal(reset=1)
 
@@ -157,10 +161,12 @@ class CPU(Elaboratable):
         pc      = Signal(self.xlen.value)
         pc_next = Signal(self.xlen.value)
 
+        jump_x = Signal()
+        m.d.comb += jump_x.eq(format_x == Format.J_type)
+
         branch_addr_known = Signal()
-        with m.If((decoder.format == Format.J_type) &
-                  (format_x == Format.J_type) &
-                  (format_wb != Format.J_type)):
+
+        with m.If(jump_x):
             m.d.comb += branch_addr_known.eq(1)
             m.d.comb += pc_next.eq(alu.out + 4)
         with m.Elif(branch_x):
@@ -170,17 +176,11 @@ class CPU(Elaboratable):
             m.d.comb += branch_addr_known.eq(0)
             m.d.comb += pc_next.eq(pc + 4)
 
-        # m.d.comb += pc_next.eq(Mux(j_type_d_x, alu.out + 4, Mux(branch_x, alu.out, pc + 4)))
         m.d.sync += pc.eq(pc_next)
-
-        j_type_d_x = Signal()
-        m.d.comb += j_type_d_x.eq((decoder.format == Format.J_type) &
-                                  (format_x == Format.J_type) &
-                                  (format_wb != Format.J_type))
 
         # When we're at the execution stage, then we know what
         # the target address of the J-type instruction is.
-        m.d.comb += self.imem.adr.eq(Mux(j_type_d_x, alu.out, pc))
+        m.d.comb += self.imem.adr.eq(Mux(jump_x, alu.out, pc))
         # m.d.comb += self.imem.adr.eq(pc)
         m.d.comb += self.imem.cyc.eq(1)
         # m.d.comb += addr.eq(Mux(j_type_d_x, alu.out, pc))
@@ -188,9 +188,11 @@ class CPU(Elaboratable):
 
         with m.If((~bubble_next)):
             m.d.comb += self.imem.stb.eq(1)
+            # m.d.comb += self.imem.sel.eq(3)
             # m.d.comb += stb.eq(1)
         with m.Else():
             m.d.comb == self.imem.stb.eq(0)
+            # m.d.comb += self.imem.sel.eq(0)
             # m.d.comb == stb.eq(0)
         
         m.d.sync += cyc_prev.eq(self.imem.cyc)
@@ -202,6 +204,8 @@ class CPU(Elaboratable):
         # instruction fetch.
         # with m.If(cyc_prev & stb_prev & self.imem.ack):
         with m.If((format_x == Format.B_type) & (branch_x)):
+            m.d.sync += insn.eq(NOP)
+        with m.Elif(decoder.format == Format.J_type):
             m.d.sync += insn.eq(NOP)
         with m.Elif(cyc_prev & self.imem.stb & self.imem.ack):
         # with m.If(cyc_prev & self.imem.stb & self.imem.ack):
@@ -231,7 +235,7 @@ class CPU(Elaboratable):
         m.d.sync += format_x.eq(Mux(branch_x, Format.I_type, decoder.format))
         m.d.sync += funct3_x.eq(decoder.funct3)
         m.d.sync += funct7_x.eq(decoder.funct7)
-        m.d.sync += rd_x.eq(Mux(branch_x, 0, decoder.rd))
+        m.d.sync += rd_x.eq(Mux(branch_x | jump_x | bubble_x, 0, decoder.rd))
         m.d.sync += imm_x.eq(decoder.imm)
         m.d.sync += u_instr_x.eq(decoder.u_instr)
 
@@ -240,8 +244,8 @@ class CPU(Elaboratable):
             # is processing the J-type instruction
             with m.If(format_x != Format.J_type):
                 # The insert a bubble so that we don't
-                # process anything after the J-type
-                # instruction.
+                # decode anything while calculating
+                # the jump address.
                 m.d.comb += bubble_next.eq(1)
             with m.Else():
                 m.d.comb += bubble_next.eq(0)
@@ -258,9 +262,12 @@ class CPU(Elaboratable):
                 with m.Case(Format.R_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
                     m.d.comb += rp2.addr.eq(decoder.rs2)
+                    m.d.sync += rs1_value_d.eq(0)
+                    m.d.sync += rs2_value_d.eq(0)
                 with m.Case(Format.I_type, Format.S_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
                     m.d.comb += rp2.addr.eq(0)
+                    m.d.sync += rs1_value_d.eq(0)
                     m.d.sync += rs2_value_d.eq(decoder.imm)
                 with m.Case(Format.U_type):
                     # Determine if the U-type instruction is
@@ -311,18 +318,12 @@ class CPU(Elaboratable):
         with m.If(decoder.rs1 == rd_x):
             m.d.sync += rs1_value_RAW.eq(alu.out)
             m.d.sync += rs1_RAW.eq(1)
-        with m.Elif(decoder.rs1 == rd_wb):
-            m.d.sync += rs1_value_RAW.eq(alu_out_wb)
-            m.d.sync += rs1_RAW.eq(1)
         with m.Else():
             m.d.sync += rs2_value_RAW.eq(0)
             m.d.sync += rs1_RAW.eq(0)
 
         with m.If(decoder.rs2 == rd_x):
             m.d.sync += rs2_value_RAW.eq(alu.out)
-            m.d.sync += rs2_RAW.eq(1)
-        with m.Elif(decoder.rs2 == rd_wb):
-            m.d.sync += rs2_value_RAW.eq(alu_out_wb)
             m.d.sync += rs2_RAW.eq(1)
         with m.Else():
             m.d.sync += rs2_value_RAW.eq(0)
@@ -333,37 +334,76 @@ class CPU(Elaboratable):
         m.d.sync += pc_x.eq(pc)
         m.d.sync += bubble_x.eq(bubble_d)
 
+        # Default values
         m.d.comb += branch.in1.eq(0)
         m.d.comb += branch.in2.eq(0)
         m.d.comb += branch.br_insn.eq(BInsn.BNE)
+
+        m.d.comb += alu.in1.eq(0)
+        m.d.comb += alu.in2.eq(0)
+        m.d.comb += alu.funct3.eq(Funct3.ADD)
+
+        m.d.comb += wp.data.eq(0)
+        m.d.comb += wp.addr.eq(0)
+        m.d.comb += wp.en.eq(0)
 
         # ALU signals
         with m.If(~bubble_x):
             with m.Switch(format_x):
                 with m.Case(Format.R_type):
-                    with m.If(rd_wb == rd_x):
+                    with m.If(rs1_RAW):
                         m.d.comb += alu.in1.eq(rs1_value_RAW)
-                        m.d.comb += alu.in2.eq(rs2_value_RAW)
                     with m.Else():
                         m.d.comb += alu.in1.eq(rp1.data)
+                    with m.If(rs2_RAW):
+                        m.d.comb += alu.in2.eq(rs2_value_RAW)
+                    with m.Else():
                         m.d.comb += alu.in2.eq(rp2.data)
 
                     m.d.comb += alu.funct3.eq(funct3_x)
                     m.d.comb += alu.funct7.eq(funct7_x)
+
+                    # For cleanness sake, prefer this...
+                    with m.If(rd_x != 0):
+                        m.d.comb += wp.data.eq(alu.out)
+                        m.d.comb += wp.addr.eq(rd_x)
+                        m.d.comb += wp.en.eq(1)
+                    # over this...
+                    # m.d.comb += wp.data.eq(alu.out)
+                    # m.d.comb += wp.addr.eq(rd_x)
+                    # m.d.comb += wp.en.eq(rd_x != 0)
                 with m.Case(Format.I_type):
-                    with m.If(rd_wb == rd_x):
+                    with m.If(rs1_RAW):
                         m.d.comb += alu.in1.eq(rs1_value_RAW)
                     with m.Else():
                         m.d.comb += alu.in1.eq(rp1.data)
 
                     m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(funct3_x)
-                    # m.d.comb += alu.funct7.eq(0)
+
+                    # For cleanness sake, prefer this...
+                    with m.If(rd_x != 0):
+                        m.d.comb += wp.data.eq(alu.out)
+                        m.d.comb += wp.addr.eq(rd_x)
+                        m.d.comb += wp.en.eq(1)
+                    # over this...
+                    # m.d.comb += wp.data.eq(alu.out)
+                    # m.d.comb += wp.addr.eq(rd_x)
+                    # m.d.comb += wp.en.eq(rd_x != 0)
                 with m.Case(Format.S_type, Format.U_type):
                     m.d.comb += alu.in1.eq(rs1_value_d)
                     m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(Funct3.ADD)
-                    # m.d.comb += alu.funct7.eq(0)
+
+                    # For cleanness sake, prefer this...
+                    with m.If(rd_x != 0):
+                        m.d.comb += wp.data.eq(alu.out)
+                        m.d.comb += wp.addr.eq(rd_x)
+                        m.d.comb += wp.en.eq(1)
+                    # over this...
+                    # m.d.comb += wp.data.eq(alu.out)
+                    # m.d.comb += wp.addr.eq(rd_x)
+                    # m.d.comb += wp.en.eq(rd_x != 0)
                 with m.Case(Format.B_type):
                     m.d.comb += alu.in1.eq(rs1_value_d)
                     m.d.comb += alu.in2.eq(rs2_value_d)
@@ -384,35 +424,44 @@ class CPU(Elaboratable):
                     m.d.comb += alu.in1.eq(rs1_value_d)
                     m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(Funct3.ADD)
+                    
+                    # For cleanness sake, prefer this...
+                    with m.If(rd_x != 0):
+                        m.d.comb += wp.data.eq(pc_wb)
+                        m.d.comb += wp.addr.eq(rd_x)
+                        m.d.comb += wp.en.eq(1)
+                    # over this...
+                    # m.d.comb += wp.data.eq(pc_wb)
+                    # m.d.comb += wp.addr.eq(rd_x)
+                    # m.d.comb += wp.en.eq(rd_x != 0)
 
         ####################
         # Write-back stage #
         ####################
 
         m.d.sync += pc_wb.eq(pc_x)
-        m.d.sync += rd_wb.eq(rd_x)
         m.d.sync += format_wb.eq(format_x)
         m.d.sync += alu_out_wb.eq(alu.out)
 
         m.d.sync += bubble_wb.eq(bubble_x)
 
-        with m.If((~bubble_wb) & (rd_wb != 0)):
-            with m.Switch(format_wb):
-                with m.Case(Format.R_type, Format.I_type):
-                    m.d.comb += wp.en.eq(1)
-                    m.d.comb += wp.data.eq(alu_out_wb)
-                    m.d.comb += wp.addr.eq(rd_wb)
-                with m.Case(Format.J_type):
-                    # JAL stores PC+4 in the destination
-                    # register, however pc_x already has PC+4
-                    # stored in it, so don't add 4 to it.
-                    m.d.comb += wp.en.eq(1)
-                    m.d.comb += wp.data.eq(pc_wb)
-                    m.d.comb += wp.addr.eq(rd_x)
-                with m.Default():
-                    m.d.comb += wp.en.eq(0)
-        with m.Else():
-            m.d.comb += wp.en.eq(0)
+        # with m.If((~bubble_wb)):
+        #     with m.Switch(format_wb):
+        #         # with m.Case(Format.R_type, Format.I_type, Format.U_type):
+        #         #     m.d.comb += wp.en.eq(1)
+        #         #     m.d.comb += wp.data.eq(alu_out_wb)
+        #         #     m.d.comb += wp.addr.eq(rd_wb)
+        #         # with m.Case(Format.J_type):
+        #         #     # JAL stores PC+4 in the destination
+        #         #     # register, however pc_x already has PC+4
+        #         #     # stored in it, so don't add 4 to it.
+        #         #     m.d.comb += wp.en.eq(1)
+        #         #     m.d.comb += wp.data.eq(pc_wb)
+        #         #     m.d.comb += wp.addr.eq(rd_x)
+        #         with m.Default():
+        #             m.d.comb += wp.en.eq(0)
+        # with m.Else():
+        #     m.d.comb += wp.en.eq(0)
 
         # RVFI
         if self.rvfi:
@@ -437,69 +486,30 @@ class CPU(Elaboratable):
 
 
 if __name__ == "__main__":
+    data = []
+
+    with open("programs/hex.bin", "rb") as f:
+        bindata = f.read()
+
+    for i in range(len(bindata) // 4):
+        w = bindata[4*i : 4*i+4]
+        data.append(int("%02x%02x%02x%02x" % (w[3], w[2], w[1], w[0]), 16))
+
     top = Module()
-
     top.submodules.cpu = cpu = CPU(xlen=XLEN.RV32, with_RVFI=False)
+    top.submodules.imem = mem = ROM(data)
 
-    # mem = {
-    #     0x0000_0000: 0b1111_1111_1111_00001_000_00010_0010011, # ADDI R2 = R1 + (-1)
-    #     0x0000_0004: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
-    #     0x0000_0008: 0b0000_0000_0010_00001_000_00001_0010011, # ADDI R1 = R1 + 2
-    #     0x0000_000C: 0b0000_0000_0010_00010_000_00010_0010011, # ADDI R2 = R2 + 2
-    #     0x0000_0010: 0b1111_1111_0001_1111_1111_00001_1101111, # JAL R1, -0x10
-    # }
-
-    # Works
-    # mem = {
-    #     0x0000_0000: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
-    #     0x0000_0004: RV32_J(imm=-0x4, rd=0, opcode=J_Instr.JAL),
-    # }
-
-    # Works
-    # mem = {
-    #     0x0000_0000: RV32_I(imm=2, rs1=0, rd=1, funct3=Funct3.ADD),
-    #     0x0000_0004: RV32_B(imm=0x20, rs1=1, rs2=2, funct3=Funct3.BEQ),
-    #     0x0000_0008: RV32_I(imm=1, rs1=2, rd=2, funct3=Funct3.ADD),
-    #     0x0000_000C: RV32_J(imm=-0x08, rd=0, opcode=J_Instr.JAL),
-    #     0x0000_0024: RV32_J(imm=-0x24, rd=0, opcode=J_Instr.JAL),
-    # }
-
-    # Works
-    mem = {
-        0x0000_0000: RV32_I(imm= 0x01, rs1=0, rd =1, funct3=Funct3.ADD),
-        0x0000_0004: RV32_I(imm= 0x01, rs1=1, rd =1, funct3=Funct3.SLL),
-        0x0000_0008: RV32_B(imm= 0x1C, rs1=1, rs2=2, funct3=Funct3.BEQ),
-        0x0000_000C: RV32_I(imm= 0x01, rs1=2, rd =2, funct3=Funct3.ADD),
-        0x0000_0010: RV32_J(imm=-0x08, rd =0, opcode=J_Instr.JAL),
-        0x0000_0024: RV32_J(imm=-0x24, rd =0, opcode=J_Instr.JAL),
-    }
-
-    with top.If(cpu.imem.cyc & cpu.imem.stb):
-        with top.Switch(cpu.imem.adr):
-            for addr, data in mem.items():
-                with top.Case(addr):
-                    top.d.sync += cpu.imem.dat_r.eq(data)
-                    top.d.sync += cpu.imem.ack.eq(1)
-                    top.d.sync += cpu.stall.eq(0)
-            with top.Default():
-                # NOP
-                # top.d.sync += cpu.imem.dat_r.eq(0b0000_0000_0000_00000_000_00000_0010011)
-                top.d.sync += cpu.imem.dat_r.eq(0)
-                top.d.sync += cpu.imem.ack.eq(1)
-                top.d.sync += cpu.stall.eq(1)
-    with top.Else():
-        top.d.sync += cpu.imem.ack.eq(0)
-        top.d.sync += cpu.imem.dat_r.eq(0)
+    top.d.comb += cpu.imem.connect(mem.wbus)
 
     def bench():
         yield
         assert not (yield cpu.trap)
 
-        for _ in range(len(mem)):
+        for _ in range(len(data)):
             yield
             assert not (yield cpu.trap)
         
-        for _ in range(30):
+        for _ in range(400):
             yield
             assert not (yield cpu.trap)
         
