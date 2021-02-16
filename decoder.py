@@ -110,12 +110,12 @@ class Decoder(Elaboratable):
                 m.d.comb += self.u_type.eq(1)
                 m.d.comb += self.format.eq(Format.U_type)
                 m.d.comb += self.imm.eq(u_imm)
-                m.d.comb += self.u_instr.eq(U_Instr.LUI)
+                m.d.comb += self.u_instr.eq(U_Type.LUI)
             with m.Case(Opcode.AUIPC):
                 m.d.comb += self.u_type.eq(1)
                 m.d.comb += self.format.eq(Format.U_type)
                 m.d.comb += self.imm.eq(u_imm)
-                m.d.comb += self.u_instr.eq(U_Instr.AUIPC)
+                m.d.comb += self.u_instr.eq(U_Type.AUIPC)
             with m.Case(Opcode.BRANCH):
                 m.d.comb += self.b_type.eq(1)
                 m.d.comb += self.format.eq(Format.B_type)
