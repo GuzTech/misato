@@ -1,4 +1,6 @@
 import argparse
+import subprocess
+import sys
 
 from nmigen import *
 from nmigen.build import Platform
@@ -11,15 +13,6 @@ from cpu import *
 from rom import ROM
 
 if __name__ == "__main__":
-    data = []
-
-    with open("programs/hex.bin", "rb") as f:
-        bindata = f.read()
-
-    for i in range(len(bindata) // 4):
-        w = bindata[4*i : 4*i+4]
-        data.append(int("%02x%02x%02x%02x" % (w[3], w[2], w[1], w[0]), 16))
-
     variants = {
         '12F': ULX3S_12F_Platform,
         '25F': ULX3S_25F_Platform,
@@ -30,9 +23,23 @@ if __name__ == "__main__":
     # Figure out which FPGA variant we want to target...
     parser = argparse.ArgumentParser()
     parser.add_argument('variant', choices=variants.keys())
+    parser.add_argument('program')
     args = parser.parse_args()
 
     platform = variants[args.variant]()
+
+    subprocess.run(["riscv64-unknown-elf-as", "-c", "programs/%s.s" % args.program, "-o", "programs/a.out"])
+    subprocess.run(["riscv64-unknown-elf-objdump", "-d", "programs/a.out"])
+    subprocess.run(["riscv64-unknown-elf-objcopy", "-O", "binary", "programs/a.out", "programs/hex.bin"])
+
+    data = []
+
+    with open("programs/hex.bin", "rb") as f:
+        bindata = f.read()
+
+    for i in range(len(bindata) // 4):
+        w = bindata[4*i : 4*i+4]
+        data.append(int("%02x%02x%02x%02x" % (w[3], w[2], w[1], w[0]), 16))
 
     top = Module()
     top.submodules.cpu = cpu = CPU(xlen=XLEN.RV32, with_RVFI=False)
