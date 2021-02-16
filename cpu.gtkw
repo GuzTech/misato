@@ -1,19 +1,19 @@
 [*]
 [*] GTKWave Analyzer v3.3.108 (w)1999-2020 BSI
-[*] Sat Feb 13 14:16:42 2021
+[*] Sun Feb 14 10:32:48 2021
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Sat Feb 13 14:14:10 2021"
-[dumpfile_size] 20635
+[dumpfile_mtime] "Sun Feb 14 10:32:21 2021"
+[dumpfile_size] 33469
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.gtkw"
 [timestart] 0
 [size] 1920 1054
 [pos] -1 -1
-*-22.251596 4050000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-21.251596 8860000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] top.
 [treeopen] top.cpu.
 [sst_width] 40
-[signals_width] 311
+[signals_width] 319
 [sst_expanded] 0
 [sst_vpaned_height] 298
 @28
@@ -26,7 +26,7 @@ top.cpu.imem__dat_r[31:0]
 top.cpu.imem__cyc
 top.cpu.imem__stb
 top.imem__ack
-@4023
+@4022
 [color] 1
 ^>1 /home/oguz286/Projects/FPGA/nmigen/misato/riscv-filter.py
 top.cpu.insn[31:0]
@@ -58,12 +58,18 @@ top.cpu.rs1_value_d[31:0]
 top.cpu.rs2_value_RAW[31:0]
 top.cpu.rs2_value_d[31:0]
 @200
--====== DECODER ======
+-DECODER
 @28
 top.cpu.decoder.opcode
+top.cpu.decoder.r_type
 top.cpu.decoder.i_type
+@29
+top.cpu.decoder.s_type
+@28
+top.cpu.decoder.u_type
 top.cpu.decoder.b_type
 top.cpu.decoder.j_type
+top.cpu.decoder.u_instr
 @24
 top.cpu.decoder.rs1[4:0]
 top.cpu.decoder.rs2[4:0]
@@ -87,8 +93,15 @@ top.cpu.branch.take_branch
 -====== REGS ======
 @22
 top.cpu.wp.memory(0)[31:0]
+@24
 top.cpu.wp.memory(1)[31:0]
+@22
 top.cpu.wp.memory(2)[31:0]
+@24
+top.cpu.rp1.memory(3)[31:0]
+@22
+top.cpu.rp1.memory(4)[31:0]
+top.cpu.rp1.memory(5)[31:0]
 @28
 top.cpu.wp.regfile_w_en
 @24
