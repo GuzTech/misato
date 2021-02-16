@@ -36,13 +36,13 @@ class ROM(Elaboratable):
 
         m.d.comb += arb.bus.dat_r.eq(Mux(arb.bus.cyc & arb.bus.stb, rp.data, 0))
         # Always assign the bus address to the read port.
-        m.d.comb += rp.addr.eq(arb.bus.adr[3:])
-
-        with m.If(arb.bus.cyc & arb.bus.stb):
-            m.d.sync += arb.bus.ack.eq(1)
+        m.d.comb += rp.addr.eq(arb.bus.adr[2:])
 
         with m.If(arb.bus.ack):
             m.d.sync += arb.bus.ack.eq(0)
+
+        with m.If(arb.bus.cyc & arb.bus.stb):
+            m.d.sync += arb.bus.ack.eq(1)
 
         # Word-aligned reads.
         with m.If((arb.bus.adr & 0b11) == 0b00):
