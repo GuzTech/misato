@@ -7,46 +7,49 @@ from nmigen_soc.wishbone import *
 
 class ROM(Elaboratable):
     def __init__(self, data):
-        self.data = data
-        self.size = len(self.data) * 4
-        # self.arb  = Arbiter(
-        #     addr_width=ceil(log2(self.size + 1)), data_width=32)
-        self.wbus = Interface(addr_width=ceil(log2(self.size + 1)), data_width=32)
-        # self.wbus = Interface(addr_width=14, data_width=32)
+        self.data = Memory(width=32, depth=len(data), init=data)
+        self.size = len(data) * 4
+        # Initialize Wishbone bus arbiter.
+        self.arb = Arbiter(
+            addr_width=ceil(log2(self.size + 1)), data_width=32)
+        self.arb.bus.memory_map = MemoryMap(
+            addr_width=self.arb.bus.addr_width,
+            data_width=self.arb.bus.data_width,
+            alignment=0)
+
+    def new_bus(self) -> Interface:
+        # Initialize a new Wishbone bus interface.
+        bus = Interface(addr_width=self.arb.bus.addr_width,
+                        data_width=self.arb.bus.data_width)
+        bus.memory_map = MemoryMap(addr_width=bus.addr_width,
+                                   data_width=bus.data_width,
+                                   alignment=0)
+        self.arb.add(bus)
+
+        return bus
 
     def elaborate(self, platform: Platform) -> Module:
         m = Module()
 
-        mem = Memory(width=32, depth=len(self.data), init=self.data)
-        # mem = Memory(width=32, depth=4096, init=self.data)
-        m.submodules.rp = rp = mem.read_port()
+        m.submodules.arb = arb = self.arb
+        m.submodules.rp = rp = self.data.read_port()
 
-        # size = len(self.data) * 4
+        m.d.comb += arb.bus.dat_r.eq(Mux(arb.bus.cyc & arb.bus.stb, rp.data, 0))
+        # Always assign the bus address to the read port.
+        m.d.comb += rp.addr.eq(arb.bus.adr[3:])
 
-        # m.submodules.arb = arb = self.arb
-        # arb.bus.memory_map = MemoryMap(
-            # addr_width=arb.bus.addr_width, data_width=arb.bus.data_width)
-        self.wbus.memory_map = MemoryMap(
-            addr_width=self.wbus.addr_width, data_width=self.wbus.data_width)
+        with m.If(arb.bus.cyc & arb.bus.stb):
+            m.d.sync += arb.bus.ack.eq(1)
 
-        # arb.add(self.wbus)
+        with m.If(arb.bus.ack):
+            m.d.sync += arb.bus.ack.eq(0)
 
-        # m.d.comb += arb.bus.dat_r.eq(rp.data)
-
-        # with m.If(arb.bus.ack):
-        #     m.d.sync += arb.bus.ack.eq(0)
-
-        # with m.If(arb.bus.cyc & arb.bus.stb):
-        #     m.d.sync += arb.bus.ack.eq(1)
-        #     m.d.comb += rp.addr.eq(arb.bus.adr)
-
-        m.d.comb += self.wbus.dat_r.eq(rp.data)
-
-        with m.If(self.wbus.ack):
-            m.d.sync += self.wbus.ack.eq(0)
-
-        with m.If(self.wbus.cyc & self.wbus.stb):
-            m.d.sync += self.wbus.ack.eq(1)
-            m.d.comb += rp.addr.eq(self.wbus.adr[2:])
+        # Word-aligned reads.
+        with m.If((arb.bus.adr & 0b11) == 0b00):
+            m.d.comb += arb.bus.dat_r.eq(rp.data)
+        # Un-aligned reads.
+        with m.Else():
+            m.d.comb += arb.bus.dat_r.eq(
+                rp.data << ((arb.bus.adr & 0b11) << 3))
 
         return m

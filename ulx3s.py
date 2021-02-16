@@ -58,6 +58,6 @@ if __name__ == "__main__":
 
     top.submodules.imem = mem = ROM(data)
 
-    top.d.comb += cpu.imem.connect(mem.wbus)
+    top.d.comb += cpu.ibus.connect(mem.wbus)
 
     platform.build(top, do_program=True, nextpnr_opts="--timing-allow-fail")

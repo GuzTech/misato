@@ -12,6 +12,8 @@ from decoder import Decoder
 from alu import ALU
 from branch import Branch, BInsn
 from rom import ROM
+from ram import RAM
+from interconnect import Interconnect
 
 
 class CPU(Elaboratable):
@@ -19,8 +21,8 @@ class CPU(Elaboratable):
                  xlen: XLEN,
                  with_RVFI=False):
         # Inputs
-        self.imem  = Interface(addr_width=xlen.value, data_width=xlen.value)
-        self.dmem  = Interface(addr_width=xlen.value, data_width=xlen.value)
+        self.ibus  = Interface(addr_width=xlen.value, data_width=xlen.value)
+        self.dbus  = Interface(addr_width=xlen.value, data_width=xlen.value)
         self.stall = Signal()
 
         # Outputs
@@ -57,20 +59,20 @@ class CPU(Elaboratable):
 
     def ports(self) -> List[Signal]:
         signals = [
-            self.imem.adr,
-            self.imem.dat_r,
-            self.imem.sel,
-            self.imem.cyc,
-            self.imem.stb,
-            self.imem.we,
-            self.imem.ack,
-            self.dmem.adr,
-            self.dmem.dat_r,
-            self.dmem.sel,
-            self.dmem.cyc,
-            self.dmem.stb,
-            self.dmem.we,
-            self.dmem.ack,
+            self.ibus.adr,
+            self.ibus.dat_r,
+            self.ibus.sel,
+            self.ibus.cyc,
+            self.ibus.stb,
+            self.ibus.we,
+            self.ibus.ack,
+            self.dbus.adr,
+            self.dbus.dat_r,
+            self.dbus.sel,
+            self.dbus.cyc,
+            self.dbus.stb,
+            self.dbus.we,
+            self.dbus.ack,
             self.stall,
             self.trap
         ]
@@ -133,8 +135,8 @@ class CPU(Elaboratable):
         funct3_x    = Signal(Funct3)
         funct7_x    = Signal(Funct7)
         imm_x       = Signal(self.xlen.value)
-        bubble_next = Signal()
-        bubble_d    = Signal(reset=1)
+        stall_next  = Signal()
+        stall_d     = Signal(reset=1)
 
         # Execute stage signals
         rs1_RAW     = Signal()
@@ -145,17 +147,17 @@ class CPU(Elaboratable):
         u_instr_x   = Signal()
         alu_out_wb  = Signal(self.xlen.value)
         branch_x    = Signal()
-        bubble_x    = Signal(reset=1)
+        stall_x     = Signal(reset=1)
 
         # Write-back stage signals
         pc_wb     = Signal(self.xlen.value)
         format_wb = Signal(Format)
-        bubble_wb = Signal(reset=1)
+        stall_wb  = Signal(reset=1)
 
         # Wishbone interface
-        # m.d.sync += self.imem.cyc.eq(cyc)
-        # m.d.sync += self.imem.stb.eq(stb)
-        # m.d.sync += self.imem.adr.eq(addr)
+        # m.d.sync += self.ibus.cyc.eq(cyc)
+        # m.d.sync += self.ibus.stb.eq(stb)
+        # m.d.sync += self.ibus.adr.eq(addr)
 
         # Program counter
         pc      = Signal(self.xlen.value)
@@ -176,43 +178,41 @@ class CPU(Elaboratable):
             m.d.comb += branch_addr_known.eq(0)
             m.d.comb += pc_next.eq(pc + 4)
 
+        # m.d.sync += pc.eq(Mux(stall_next, pc, pc_next))
         m.d.sync += pc.eq(pc_next)
 
         # When we're at the execution stage, then we know what
         # the target address of the J-type instruction is.
-        m.d.comb += self.imem.adr.eq(Mux(jump_x, alu.out, pc))
-        # m.d.comb += self.imem.adr.eq(pc)
-        m.d.comb += self.imem.cyc.eq(1)
-        # m.d.comb += addr.eq(Mux(j_type_d_x, alu.out, pc))
+        m.d.comb += self.ibus.adr.eq(Mux(jump_x, alu.out, pc))
+        # m.d.comb += self.ibus.adr.eq(pc)
+        m.d.comb += self.ibus.cyc.eq(1)
         # m.d.comb += cyc.eq(1)
 
-        with m.If((~bubble_next)):
-            m.d.comb += self.imem.stb.eq(1)
-            # m.d.comb += self.imem.sel.eq(3)
+        with m.If((~stall_next)):
+            m.d.comb += self.ibus.stb.eq(1)
+            # m.d.comb += self.ibus.sel.eq(3)
             # m.d.comb += stb.eq(1)
         with m.Else():
-            m.d.comb == self.imem.stb.eq(0)
-            # m.d.comb += self.imem.sel.eq(0)
+            m.d.comb == self.ibus.stb.eq(0)
+            # m.d.comb += self.ibus.sel.eq(0)
             # m.d.comb == stb.eq(0)
         
-        m.d.sync += cyc_prev.eq(self.imem.cyc)
-        m.d.sync += stb_prev.eq(self.imem.stb)
+        m.d.sync += cyc_prev.eq(self.ibus.cyc)
+        m.d.sync += stb_prev.eq(self.ibus.stb)
 
         # This might be dangerous, because we only check
         # if we issued a instruction fetch the previous
         # cycle instead of checking if we have an outstanding
         # instruction fetch.
-        # with m.If(cyc_prev & stb_prev & self.imem.ack):
         with m.If((format_x == Format.B_type) & (branch_x)):
             m.d.sync += insn.eq(NOP)
         with m.Elif(decoder.format == Format.J_type):
             m.d.sync += insn.eq(NOP)
-        with m.Elif(cyc_prev & self.imem.stb & self.imem.ack):
-        # with m.If(cyc_prev & self.imem.stb & self.imem.ack):
-            # TODO: Try to use self.imem.dat_r combinatorially
-            # whenever possible, but when self.imem.ack is 0,
+        with m.Elif(cyc_prev & self.ibus.stb & self.ibus.ack):
+            # TODO: Try to use self.ibus.dat_r combinatorially
+            # whenever possible, but when self.ibus.ack is 0,
             # then use the registered insn.
-            m.d.sync += insn.eq(self.imem.dat_r)
+            m.d.sync += insn.eq(self.ibus.dat_r)
 
         ################
         # Decode stage #
@@ -224,18 +224,18 @@ class CPU(Elaboratable):
         ]
 
         m.d.sync += [
-            self.dmem.adr.eq(0),
-            self.dmem.we.eq(0),
-            self.dmem.cyc.eq(0),
-            self.dmem.stb.eq(0),
-            self.dmem.dat_w.eq(0),
-            self.dmem.sel.eq(0)
+            self.dbus.adr.eq(0),
+            self.dbus.we.eq(0),
+            self.dbus.cyc.eq(0),
+            self.dbus.stb.eq(0),
+            self.dbus.dat_w.eq(0),
+            self.dbus.sel.eq(0)
         ]
 
         m.d.sync += format_x.eq(Mux(branch_x, Format.I_type, decoder.format))
         m.d.sync += funct3_x.eq(decoder.funct3)
         m.d.sync += funct7_x.eq(decoder.funct7)
-        m.d.sync += rd_x.eq(Mux(branch_x | jump_x | bubble_x, 0, decoder.rd))
+        m.d.sync += rd_x.eq(Mux(branch_x | jump_x | stall_x, 0, decoder.rd))
         m.d.sync += imm_x.eq(decoder.imm)
         m.d.sync += u_instr_x.eq(decoder.u_instr)
 
@@ -246,18 +246,22 @@ class CPU(Elaboratable):
                 # The insert a bubble so that we don't
                 # decode anything while calculating
                 # the jump address.
-                m.d.comb += bubble_next.eq(1)
+                m.d.comb += stall_next.eq(1)
             with m.Else():
-                m.d.comb += bubble_next.eq(0)
+                m.d.comb += stall_next.eq(0)
         with m.Elif(branch_x):
-            m.d.comb += bubble_next.eq(1)
+            m.d.comb += stall_next.eq(1)
+        # This creates a combinatorial loop
+        # with m.Elif(self.ibus.cyc & self.ibus.stb & (~self.ibus.ack)):
+        # This does not, but hangs because of no progress
+        # with m.Elif(~self.ibus.ack):
+        #     m.d.comb += stall_next.eq(1)
         with m.Else():
-            m.d.comb += bubble_next.eq(0)
+            m.d.comb += stall_next.eq(0)
 
-        m.d.sync += bubble_d.eq(bubble_next)
+        m.d.sync += stall_d.eq(stall_next)
 
-        with m.If((~bubble_d) & (~branch_x)):
-        # with m.If(~bubble_d):
+        with m.If((~stall_d) & (~branch_x)):
             with m.Switch(decoder.format):
                 with m.Case(Format.R_type):
                     m.d.comb += rp1.addr.eq(decoder.rs1)
@@ -332,7 +336,7 @@ class CPU(Elaboratable):
         m.d.comb += branch_x.eq(Mux(format_x == Format.B_type, branch.take_branch, 0))
 
         m.d.sync += pc_x.eq(pc)
-        m.d.sync += bubble_x.eq(bubble_d)
+        m.d.sync += stall_x.eq(stall_d)
 
         # Default values
         m.d.comb += branch.in1.eq(0)
@@ -348,7 +352,7 @@ class CPU(Elaboratable):
         m.d.comb += wp.en.eq(0)
 
         # ALU signals
-        with m.If(~bubble_x):
+        with m.If(~stall_x):
             with m.Switch(format_x):
                 with m.Case(Format.R_type):
                     with m.If(rs1_RAW):
@@ -391,7 +395,11 @@ class CPU(Elaboratable):
                     # m.d.comb += wp.addr.eq(rd_x)
                     # m.d.comb += wp.en.eq(rd_x != 0)
                 with m.Case(Format.S_type, Format.U_type):
-                    m.d.comb += alu.in1.eq(rs1_value_d)
+                    with m.If(rs1_RAW):
+                        m.d.comb += alu.in1.eq(rs1_value_RAW)
+                    with m.Else():
+                        m.d.comb += alu.in1.eq(rp1.data)
+
                     m.d.comb += alu.in2.eq(rs2_value_d)
                     m.d.comb += alu.funct3.eq(Funct3.ADD)
 
@@ -443,10 +451,12 @@ class CPU(Elaboratable):
         m.d.sync += format_wb.eq(format_x)
         m.d.sync += alu_out_wb.eq(alu.out)
 
-        m.d.sync += bubble_wb.eq(bubble_x)
+        m.d.sync += stall_wb.eq(stall_x)
 
-        # with m.If((~bubble_wb)):
+        # with m.If((~stall_wb)):
         #     with m.Switch(format_wb):
+        #         with m.Case(Format.S_type):
+
         #         # with m.Case(Format.R_type, Format.I_type, Format.U_type):
         #         #     m.d.comb += wp.en.eq(1)
         #         #     m.d.comb += wp.data.eq(alu_out_wb)
@@ -465,9 +475,9 @@ class CPU(Elaboratable):
 
         # RVFI
         if self.rvfi:
-            m.d.sync += self.rvfi_valid.eq((~ResetSignal()) & (~self.trap) & (~bubble_wb))
+            m.d.sync += self.rvfi_valid.eq((~ResetSignal()) & (~self.trap) & (~stall_wb))
             m.d.sync += self.rvfi_trap.eq(self.trap)
-            m.d.sync += self.rvfi_insn.eq(self.imem.dat_r)
+            m.d.sync += self.rvfi_insn.eq(self.ibus.dat_r)
             m.d.sync += self.rvfi_pc_rdata.eq(pc)
             m.d.sync += self.rvfi_pc_wdata.eq(pc_x)
             m.d.sync += self.rvfi_rs1_addr.eq(decoder.rs1)
@@ -476,8 +486,8 @@ class CPU(Elaboratable):
             m.d.sync += self.rvfi_rs2_rdata.eq(rs2_value_d)
             m.d.sync += self.rvfi_rd_addr.eq(decoder.rd)
             m.d.sync += self.rvfi_rd_wdata.eq(alu_out_wb)
-            m.d.sync += self.rvfi_mem_addr.eq(self.imem.adr)
-            m.d.sync += self.rvfi_mem_rdata.eq(self.imem.dat_r)
+            m.d.sync += self.rvfi_mem_addr.eq(self.ibus.adr)
+            m.d.sync += self.rvfi_mem_rdata.eq(self.ibus.dat_r)
             
             m.d.comb += self.rvfi_mode.eq(0)
             m.d.comb += self.rvfi_ixl.eq(1)
@@ -497,9 +507,13 @@ if __name__ == "__main__":
 
     top = Module()
     top.submodules.cpu = cpu = CPU(xlen=XLEN.RV32, with_RVFI=False)
-    top.submodules.imem = mem = ROM(data)
+    # top.submodules.imem = mem = ROM(data)
+    top.submodules.interconnect = itcnt = Interconnect(ROM(data), 512)
 
-    top.d.comb += cpu.imem.connect(mem.wbus)
+    top.d.comb += cpu.ibus.connect(itcnt.imux.bus)
+    top.d.comb += cpu.dbus.connect(itcnt.dmux.bus)
+
+    # top.d.comb += cpu.ibus.connect(mem.new_bus())
 
     def bench():
         yield
