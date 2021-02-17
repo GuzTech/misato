@@ -174,16 +174,20 @@ class CPU(Elaboratable):
         with m.Elif(branch_x):
             m.d.comb += branch_addr_known.eq(1)
             m.d.comb += pc_next.eq(alu.out)
+        with m.Elif(~self.ibus.ack):
+            m.d.comb += branch_addr_known.eq(0)
+            m.d.comb += pc_next.eq(pc)
         with m.Else():
             m.d.comb += branch_addr_known.eq(0)
             m.d.comb += pc_next.eq(pc + 4)
 
-        # m.d.sync += pc.eq(Mux(stall_next, pc, pc_next))
+        # m.d.sync += pc.eq(Mux(stall_d, pc, pc_next))
         m.d.sync += pc.eq(pc_next)
 
         # When we're at the execution stage, then we know what
         # the target address of the J-type instruction is.
-        m.d.comb += self.ibus.adr.eq(Mux(jump_x, alu.out, pc))
+        # m.d.comb += self.ibus.adr.eq(Mux(jump_x, alu.out, pc))
+        m.d.comb += self.ibus.adr.eq(Mux(branch_addr_known, alu.out, pc))
         # m.d.comb += self.ibus.adr.eq(pc)
         m.d.comb += self.ibus.cyc.eq(1)
         # m.d.comb += cyc.eq(1)
@@ -507,12 +511,12 @@ if __name__ == "__main__":
 
     top = Module()
     top.submodules.cpu = cpu = CPU(xlen=XLEN.RV32, with_RVFI=False)
-    # top.submodules.imem = mem = ROM(data)
     top.submodules.interconnect = itcnt = Interconnect(ROM(data), 512)
 
     top.d.comb += cpu.ibus.connect(itcnt.imux.bus)
     top.d.comb += cpu.dbus.connect(itcnt.dmux.bus)
 
+    # top.submodules.imem = mem = ROM(data)
     # top.d.comb += cpu.ibus.connect(mem.new_bus())
 
     def bench():
