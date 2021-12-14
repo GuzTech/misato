@@ -1,11 +1,11 @@
 from typing import List
 
-from nmigen import *
-from nmigen.build import Platform
-from nmigen.back import verilog
-from nmigen.sim import Simulator, Settle
-from nmigen_soc.wishbone import *
-from nmigen_boards.ulx3s import *
+from amaranth import *
+from amaranth.build import Platform
+from amaranth.back import verilog
+from amaranth.sim import Simulator, Settle
+from amaranth_soc.wishbone import *
+from amaranth_boards.ulx3s import *
 
 from isa import *
 from decoder import Decoder

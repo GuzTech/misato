@@ -1,7 +1,7 @@
 from enum import Enum, unique
 
-from nmigen import *
-from nmigen.build import Platform
+from amaranth import *
+from amaranth.build import Platform
 
 
 # ADDI R0, R0, 0

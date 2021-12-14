@@ -1,6 +1,6 @@
-from nmigen import *
-from nmigen_soc.wishbone import *
-from nmigen_soc.memory import *
+from amaranth import *
+from amaranth_soc.wishbone import *
+from amaranth_soc.memory import *
 
 from ram import RAM
 from rom import ROM

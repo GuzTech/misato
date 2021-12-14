@@ -1,8 +1,8 @@
-from nmigen import *
-from nmigen.build import Platform
-from nmigen.cli import main_parser, main_runner
-from nmigen.back import verilog
-from nmigen.sim import Simulator, Settle
+from amaranth import *
+from amaranth.build import Platform
+from amaranth.cli import main_parser, main_runner
+from amaranth.back import verilog
+from amaranth.sim import Simulator, Settle
 
 from isa import *
 

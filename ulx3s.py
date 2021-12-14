@@ -2,12 +2,12 @@ import argparse
 import subprocess
 import sys
 
-from nmigen import *
-from nmigen.build import Platform
-from nmigen.back import verilog
-from nmigen.sim import Simulator, Settle
-from nmigen_soc.wishbone import *
-from nmigen_boards.ulx3s import *
+from amaranth import *
+from amaranth.build import Platform
+from amaranth.back import verilog
+from amaranth.sim import Simulator, Settle
+from amaranth_soc.wishbone import *
+from amaranth_boards.ulx3s import *
 
 from cpu import *
 from rom import ROM
@@ -28,9 +28,9 @@ if __name__ == "__main__":
 
     platform = variants[args.variant]()
 
-    subprocess.run(["riscv64-unknown-elf-as", "-c", "programs/%s.s" % args.program, "-o", "programs/a.out"])
-    subprocess.run(["riscv64-unknown-elf-objdump", "-d", "programs/a.out"])
-    subprocess.run(["riscv64-unknown-elf-objcopy", "-O", "binary", "programs/a.out", "programs/hex.bin"])
+    subprocess.run(["riscv64-elf-as", "-c", "programs/%s.s" % args.program, "-o", "programs/a.out"])
+    subprocess.run(["riscv64-elf-objdump", "-d", "programs/a.out"])
+    subprocess.run(["riscv64-elf-objcopy", "-O", "binary", "programs/a.out", "programs/hex.bin"])
 
     data = []
 
@@ -58,6 +58,6 @@ if __name__ == "__main__":
 
     top.submodules.imem = mem = ROM(data)
 
-    top.d.comb += cpu.ibus.connect(mem.wbus)
+    top.d.comb += cpu.ibus.connect(mem.arb.bus)
 
-    platform.build(top, do_program=True, nextpnr_opts="--timing-allow-fail")
+    platform.build(top, do_program=False, nextpnr_opts="--timing-allow-fail")

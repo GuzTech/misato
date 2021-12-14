@@ -1,6 +1,6 @@
-from nmigen import *
-from nmigen.back import verilog
-from nmigen.build import Platform
+from amaranth import *
+from amaranth.back import verilog
+from amaranth.build import Platform
 
 from isa import *
 

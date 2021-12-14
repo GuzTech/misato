@@ -1,8 +1,8 @@
 from math import ceil, log2
-from nmigen import *
-from nmigen.build import Platform
-from nmigen_soc.memory import *
-from nmigen_soc.wishbone import *
+from amaranth import *
+from amaranth.build import Platform
+from amaranth_soc.memory import *
+from amaranth_soc.wishbone import *
 
 
 class ROM(Elaboratable):
