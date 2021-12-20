@@ -16,42 +16,45 @@ from ram import RAM
 from interconnect import Interconnect
 
 
-class CPU(Elaboratable):
+class Misato(Elaboratable):
     def __init__(self,
                  xlen: XLEN,
                  with_RVFI=False):
+        # Configuration
+        self.xlen     = xlen                # Number of bits
+        self.rvfi     = with_RVFI           # Enable RVFI for formal verification
+
         # Inputs
-        self.ibus  = Interface(addr_width=xlen.value, data_width=xlen.value)
-        self.dbus  = Interface(addr_width=xlen.value, data_width=xlen.value)
-        self.stall = Signal()
+        self.i_instr  = Signal(32)          # Fetched instruction (I-mem)
+        self.i_data   = Signal(xlen.value)  # Fetched data (D-mem)
+        self.i_stall  = Signal()            # Stall the CPU
 
         # Outputs
-        self.trap = Signal()
-        self.reg  = Signal(32)
-
-        # Configuration
-        self.xlen = xlen
-        self.rvfi = with_RVFI
+        self.o_i_addr = Signal(xlen.value)  # Instruction memory address
+        self.o_d_addr = Signal(xlen.value)  # Data memory address
+        self.o_d_data = Signal(xlen.value)  # Data memory value to be written
+        self.o_trap   = Signal()            # CPU encountered an issue
+        self.o_reg    = Signal(xlen.value)  # Debug
 
         # RVFI Interface (optional)
         if with_RVFI:
-            self.rvfi_valid = Signal()
-            self.rvfi_order = Signal(64)
-            self.rvfi_insn = Signal(xlen.value)
-            self.rvfi_trap = Signal()
-            self.rvfi_halt = Signal()
-            self.rvfi_intr = Signal()
-            self.rvfi_mode = Signal(2)
-            self.rvfi_ixl = Signal(2)
-            self.rvfi_rs1_addr = Signal(5)
-            self.rvfi_rs2_addr = Signal(5)
+            self.rvfi_valid     = Signal()
+            self.rvfi_order     = Signal(64)
+            self.rvfi_insn      = Signal(xlen.value)
+            self.rvfi_trap      = Signal()
+            self.rvfi_halt      = Signal()
+            self.rvfi_intr      = Signal()
+            self.rvfi_mode      = Signal(2)
+            self.rvfi_ixl       = Signal(2)
+            self.rvfi_rs1_addr  = Signal(5)
+            self.rvfi_rs2_addr  = Signal(5)
             self.rvfi_rs1_rdata = Signal(xlen.value)
             self.rvfi_rs2_rdata = Signal(xlen.value)
-            self.rvfi_rd_addr = Signal(5)
-            self.rvfi_rd_wdata = Signal(xlen.value)
-            self.rvfi_mem_addr = Signal(xlen.value)
-            self.rvfi_pc_rdata = Signal(xlen.value)
-            self.rvfi_pc_wdata = Signal(xlen.value)
+            self.rvfi_rd_addr   = Signal(5)
+            self.rvfi_rd_wdata  = Signal(xlen.value)
+            self.rvfi_mem_addr  = Signal(xlen.value)
+            self.rvfi_pc_rdata  = Signal(xlen.value)
+            self.rvfi_pc_wdata  = Signal(xlen.value)
             self.rvfi_mem_rmask = Signal(xlen.value//8)
             self.rvfi_mem_wmask = Signal(xlen.value//8)
             self.rvfi_mem_rdata = Signal(xlen.value)
@@ -59,22 +62,14 @@ class CPU(Elaboratable):
 
     def ports(self) -> List[Signal]:
         signals = [
-            self.ibus.adr,
-            self.ibus.dat_r,
-            self.ibus.sel,
-            self.ibus.cyc,
-            self.ibus.stb,
-            self.ibus.we,
-            self.ibus.ack,
-            self.dbus.adr,
-            self.dbus.dat_r,
-            self.dbus.sel,
-            self.dbus.cyc,
-            self.dbus.stb,
-            self.dbus.we,
-            self.dbus.ack,
-            self.stall,
-            self.trap
+            self.i_instr,
+            self.i_data,
+            self.i_stall,
+            self.o_i_addr,
+            self.o_d_addr,
+            self.o_d_data,
+            self.o_trap,
+            self.o_reg
         ]
 
         if self.rvfi:
@@ -109,7 +104,6 @@ class CPU(Elaboratable):
 
         m.submodules.decoder = decoder = Decoder(self.xlen)
         m.submodules.alu     = alu     = ALU(self.xlen)
-        m.submodules.branch  = branch  = Branch(self.xlen)
 
         # Register file
         regfile = Memory(width=self.xlen.value, depth=32)
@@ -117,419 +111,194 @@ class CPU(Elaboratable):
         m.submodules.rp2 = rp2 = regfile.read_port()
         m.submodules.wp  = wp  = regfile.write_port()
 
-        m.submodules.rp3 = rp3 = regfile.read_port()
-        m.d.comb += rp3.addr.eq(2)
-        m.d.comb += self.reg.eq(rp3.data)
+        ###########
+        # Signals #
+        ###########
+        branch_taken = Signal()
+        todo = Signal()
+        m.d.comb += branch_taken.eq(0)
+        m.d.comb += todo.eq(0)
 
-        # Instruction fetch stage signals
-        insn     = Signal(self.xlen.value, reset=NOP)
-        cyc      = Signal()
-        stb      = Signal()
-        addr     = Signal(self.xlen.value, reset=0)
-        cyc_prev = Signal(reset=0)
-        stb_prev = Signal(reset=0)
+        #
+        # Instruction fetch stage signals (IF)
+        #
+        pc_IF           = Signal(self.xlen.value, reset=-4)   # Current program counter value
+        pc_next_IF      = Signal(self.xlen.value)   # Next program counter value
+        pc_p4_IF        = Signal(self.xlen.value)   # Current program counter value + 4
+        instr_IF        = Signal(self.xlen.value,   # Fetched instruction
+                                 reset=NOP)
 
-        # Decode stage signals
-        rs1_value_d = Signal(self.xlen.value)
-        rs2_value_d = Signal(self.xlen.value)
-        funct3_x    = Signal(Funct3)
-        funct7_x    = Signal(Funct7)
-        imm_x       = Signal(self.xlen.value)
-        stall_next  = Signal()
-        stall_d     = Signal(reset=1)
+        #
+        # Instruction decode stage signals (ID)
+        #
+        pc_ID           = Signal(self.xlen.value)   # Program counter value
+        instr_ID        = Signal(self.xlen.value)   # Fetched instruction
+        r1_ID           = Signal(self.xlen.value)   # Source register #1 value
+        r2_ID           = Signal(self.xlen.value)   # Source register #2 value
 
-        # Execute stage signals
-        rs1_RAW     = Signal()
-        rs2_RAW     = Signal()
-        pc_x        = Signal(self.xlen.value)
-        rd_x        = Signal(5)
-        format_x    = Signal(Format)
-        u_instr_x   = Signal()
-        alu_out_wb  = Signal(self.xlen.value)
-        branch_x    = Signal()
-        stall_x     = Signal(reset=1)
+        # Instruction decoder signals
+        format_ID       = Signal(Format)            # Instruction format
+        r_type_ID       = Signal()                  # R type instruction
+        i_type_ID       = Signal()                  # I type instruction
+        u_type_ID       = Signal()                  # U type instruction
+        s_type_ID       = Signal()                  # S type instruction
+        b_type_ID       = Signal()                  # B type instruction
+        j_type_ID       = Signal()                  # J type instruction
+        imm_ID          = Signal(self.xlen.value)   # Immediate value
+        rs1_ID          = Signal(5)                 # Source register #1
+        rs2_ID          = Signal(5)                 # Source register #2
+        rd_ID           = Signal(5)                 # Destination register
+        funct3_ID       = Signal(Funct3)            # Funct3 field
+        funct7_ID       = Signal(Funct7)            # Funct7 field
+        u_instr_ID      = Signal(U_Type)            # U type instruction
+        trap_ID         = Signal()                  # Illegal instruction
 
-        # Write-back stage signals
-        pc_wb     = Signal(self.xlen.value)
-        format_wb = Signal(Format)
-        stall_wb  = Signal(reset=1)
+        #
+        # Execute stage signals (EX)
+        #
+        pc_EX           = Signal(self.xlen.value)   # Program counter value
+        r1_EX           = Signal(self.xlen.value)   # Source register #1 value
+        r2_EX           = Signal(self.xlen.value)   # Source register #2 value
+        rd_EX           = Signal(5)                 # Destination register
+        imm_EX          = Signal(self.xlen.value)   # Immediate value
+        branch_addr_EX  = Signal(self.xlen.value)   # Branch address
+        alu_out_EX      = Signal(self.xlen.value)   # ALU output
+        zero_EX         = Signal()                  # ALU result is zero
 
-        # Wishbone interface
-        # m.d.sync += self.ibus.cyc.eq(cyc)
-        # m.d.sync += self.ibus.stb.eq(stb)
-        # m.d.sync += self.ibus.adr.eq(addr)
+        #
+        #  Memory stage signals (MEM)
+        #
+        r2_MEM          = Signal(self.xlen.value)   # Source register #2 value
+        rd_MEM          = Signal(5)                 # Destination register
+        branch_addr_MEM = Signal(self.xlen.value)   # Branch address
+        data_MEM        = Signal(self.xlen.value)   # Data value read from data memory
+        alu_out_MEM     = Signal(self.xlen.value)   # ALU output
+        zero_MEM        = Signal()                  # ALU result is zero
 
-        # Program counter
-        pc      = Signal(self.xlen.value)
-        pc_next = Signal(self.xlen.value)
-
-        jump_x = Signal()
-        m.d.comb += jump_x.eq(format_x == Format.J_type)
-
-        branch_addr_known = Signal()
-
-        with m.If(jump_x):
-            m.d.comb += branch_addr_known.eq(1)
-            m.d.comb += pc_next.eq(alu.out + 4)
-        with m.Elif(branch_x):
-            m.d.comb += branch_addr_known.eq(1)
-            m.d.comb += pc_next.eq(alu.out)
-        with m.Elif(~self.ibus.ack):
-            m.d.comb += branch_addr_known.eq(0)
-            m.d.comb += pc_next.eq(pc)
-        with m.Else():
-            m.d.comb += branch_addr_known.eq(0)
-            m.d.comb += pc_next.eq(pc + 4)
-
-        # m.d.sync += pc.eq(Mux(stall_d, pc, pc_next))
-        m.d.sync += pc.eq(pc_next)
-
-        # When we're at the execution stage, then we know what
-        # the target address of the J-type instruction is.
-        # m.d.comb += self.ibus.adr.eq(Mux(jump_x, alu.out, pc))
-        m.d.comb += self.ibus.adr.eq(Mux(branch_addr_known, alu.out, pc))
-        # m.d.comb += self.ibus.adr.eq(pc)
-        m.d.comb += self.ibus.cyc.eq(1)
-        # m.d.comb += cyc.eq(1)
-
-        with m.If((~stall_next)):
-            m.d.comb += self.ibus.stb.eq(1)
-            # m.d.comb += self.ibus.sel.eq(3)
-            # m.d.comb += stb.eq(1)
-        with m.Else():
-            m.d.comb == self.ibus.stb.eq(0)
-            # m.d.comb += self.ibus.sel.eq(0)
-            # m.d.comb == stb.eq(0)
-        
-        m.d.sync += cyc_prev.eq(self.ibus.cyc)
-        m.d.sync += stb_prev.eq(self.ibus.stb)
-
-        # This might be dangerous, because we only check
-        # if we issued a instruction fetch the previous
-        # cycle instead of checking if we have an outstanding
-        # instruction fetch.
-        with m.If((format_x == Format.B_type) & (branch_x)):
-            m.d.sync += insn.eq(NOP)
-        with m.Elif(decoder.format == Format.J_type):
-            m.d.sync += insn.eq(NOP)
-        with m.Elif(cyc_prev & self.ibus.stb & self.ibus.ack):
-            # TODO: Try to use self.ibus.dat_r combinatorially
-            # whenever possible, but when self.ibus.ack is 0,
-            # then use the registered insn.
-            m.d.sync += insn.eq(self.ibus.dat_r)
-
-        ################
-        # Decode stage #
-        ################
-
-        m.d.comb += [
-            decoder.instr.eq(insn),
-            self.trap.eq(decoder.trap),
-        ]
-
-        m.d.sync += [
-            self.dbus.adr.eq(0),
-            self.dbus.we.eq(0),
-            self.dbus.cyc.eq(0),
-            self.dbus.stb.eq(0),
-            self.dbus.dat_w.eq(0),
-            self.dbus.sel.eq(0)
-        ]
-
-        m.d.sync += format_x.eq(Mux(branch_x, Format.I_type, decoder.format))
-        m.d.sync += funct3_x.eq(decoder.funct3)
-        m.d.sync += funct7_x.eq(decoder.funct7)
-        m.d.sync += rd_x.eq(Mux(branch_x | jump_x | stall_x, 0, decoder.rd))
-        m.d.sync += imm_x.eq(decoder.imm)
-        m.d.sync += u_instr_x.eq(decoder.u_instr)
-
-        with m.If(decoder.format == Format.J_type):
-            # If this is the very first stage that
-            # is processing the J-type instruction
-            with m.If(format_x != Format.J_type):
-                # The insert a bubble so that we don't
-                # decode anything while calculating
-                # the jump address.
-                m.d.comb += stall_next.eq(1)
-            with m.Else():
-                m.d.comb += stall_next.eq(0)
-        with m.Elif(branch_x):
-            m.d.comb += stall_next.eq(1)
-        # This creates a combinatorial loop
-        # with m.Elif(self.ibus.cyc & self.ibus.stb & (~self.ibus.ack)):
-        # This does not, but hangs because of no progress
-        # with m.Elif(~self.ibus.ack):
-        #     m.d.comb += stall_next.eq(1)
-        with m.Else():
-            m.d.comb += stall_next.eq(0)
-
-        m.d.sync += stall_d.eq(stall_next)
-
-        with m.If((~stall_d) & (~branch_x)):
-            with m.Switch(decoder.format):
-                with m.Case(Format.R_type):
-                    m.d.comb += rp1.addr.eq(decoder.rs1)
-                    m.d.comb += rp2.addr.eq(decoder.rs2)
-                    m.d.sync += rs1_value_d.eq(0)
-                    m.d.sync += rs2_value_d.eq(0)
-                with m.Case(Format.I_type, Format.S_type):
-                    m.d.comb += rp1.addr.eq(decoder.rs1)
-                    m.d.comb += rp2.addr.eq(0)
-                    m.d.sync += rs1_value_d.eq(0)
-                    m.d.sync += rs2_value_d.eq(decoder.imm)
-                with m.Case(Format.U_type):
-                    # Determine if the U-type instruction is
-                    # LUI (add 0) or AUIPC (add PC).
-                    m.d.sync += rs1_value_d.eq(Mux(decoder.u_instr, pc, 0))
-                    m.d.sync += rs2_value_d.eq(decoder.imm)
-
-                    m.d.comb += rp1.addr.eq(0)
-                    m.d.comb += rp2.addr.eq(0)
-                with m.Case(Format.B_type):
-                    m.d.sync += rs1_value_d.eq(pc - 8)
-                    m.d.sync += rs2_value_d.eq(decoder.imm)
-
-                    m.d.comb += rp1.addr.eq(decoder.rs1)
-                    m.d.comb += rp2.addr.eq(decoder.rs2)
-                with m.Case(Format.J_type):
-                    m.d.sync += rs1_value_d.eq(pc - 8)
-                    m.d.sync += rs2_value_d.eq(decoder.imm)
-
-                    m.d.comb += rp1.addr.eq(0)
-                    m.d.comb += rp2.addr.eq(0)
-        with m.Else():
-            m.d.comb += [
-                rp1.addr.eq(0),
-                rp2.addr.eq(0),
-            ]
-            m.d.sync += [
-                rs1_value_d.eq(0),
-                rs2_value_d.eq(0),
-            ]
-
-
-        #################
-        # Execute stage #
-        #################
-
-        # Read-after-write (RAW) hazard prevention
         # 
-        # We have a three-stage pipeline, where we
-        # check if any of the current source registers
-        # match the destination register of the previous
-        # one or two instructions. If there is a match,
-        # then we forward the result so that we don't
-        # have to stall the pipeline. 
-        rs1_value_RAW = Signal(self.xlen.value)
-        rs2_value_RAW = Signal(self.xlen.value)
+        # Write-back stage signals (WB)
+        #
+        rd_WB           = Signal(5)                 # Destination register
+        data_WB         = Signal(self.xlen.value)   # Data value to be written to the register file
+        alu_out_WB      = Signal(self.xlen.value)   # ALU output
+        data_val_WB     = Signal(self.xlen.value)   # WB stage data value
 
-        with m.If(decoder.rs1 == rd_x):
-            m.d.sync += rs1_value_RAW.eq(alu.out)
-            m.d.sync += rs1_RAW.eq(1)
-        with m.Else():
-            m.d.sync += rs2_value_RAW.eq(0)
-            m.d.sync += rs1_RAW.eq(0)
+        ##########
+        # Stages #
+        ##########
 
-        with m.If(decoder.rs2 == rd_x):
-            m.d.sync += rs2_value_RAW.eq(alu.out)
-            m.d.sync += rs2_RAW.eq(1)
-        with m.Else():
-            m.d.sync += rs2_value_RAW.eq(0)
-            m.d.sync += rs2_RAW.eq(0)
+        #
+        # Instruction fetch stage (IF)
+        #
+        m.d.comb += pc_p4_IF.eq(pc_IF + 4)
+        m.d.comb += pc_next_IF.eq(Mux(branch_taken, branch_addr_MEM, pc_p4_IF))
 
-        m.d.comb += branch_x.eq(Mux(format_x == Format.B_type, branch.take_branch, 0))
+        m.d.sync += pc_IF.eq(pc_next_IF)
+        m.d.comb += self.o_i_addr.eq(pc_IF)
 
-        m.d.sync += pc_x.eq(pc)
-        m.d.sync += stall_x.eq(stall_d)
+        #
+        # Instruction decode stage (ID)
+        #
+        m.d.sync += pc_ID.eq(pc_IF)
+        m.d.sync += instr_ID.eq(instr_IF)
 
-        # Default values
-        m.d.comb += branch.in1.eq(0)
-        m.d.comb += branch.in2.eq(0)
-        m.d.comb += branch.br_insn.eq(BInsn.BNE)
+        m.d.comb += decoder.instr.eq(instr_ID)
+        m.d.comb += [
+            format_ID .eq(decoder.format),
+            r_type_ID .eq(decoder.r_type),
+            i_type_ID .eq(decoder.i_type),
+            s_type_ID .eq(decoder.s_type),
+            u_type_ID .eq(decoder.u_type),
+            b_type_ID .eq(decoder.b_type),
+            j_type_ID .eq(decoder.j_type),
+            imm_ID    .eq(decoder.imm),
+            rs1_ID    .eq(decoder.rs1),
+            rs2_ID    .eq(decoder.rs2),
+            rd_ID     .eq(decoder.rd),
+            funct3_ID .eq(decoder.funct3),
+            funct7_ID .eq(decoder.funct7),
+            u_instr_ID.eq(decoder.u_instr),
+            trap_ID   .eq(decoder.trap)
+        ]
 
-        m.d.comb += alu.in1.eq(0)
-        m.d.comb += alu.in2.eq(0)
-        m.d.comb += alu.funct3.eq(Funct3.ADD)
+        m.d.comb += rp1.addr.eq(rs1_ID)
+        m.d.comb += rp2.addr.eq(rs2_ID)
+        m.d.comb += wp.addr.eq(rd_WB)
+        m.d.comb += wp.data.eq(data_val_WB)
 
-        m.d.comb += wp.data.eq(0)
-        m.d.comb += wp.addr.eq(0)
-        m.d.comb += wp.en.eq(0)
+        #
+        # Execute stage (EX)
+        #
+        m.d.sync += pc_EX.eq(pc_ID)
+        m.d.sync += r1_EX.eq(r1_ID)
+        m.d.sync += r2_EX.eq(r2_ID)
+        m.d.sync += rd_EX.eq(rd_ID)
+        m.d.sync += imm_EX.eq(imm_ID)
 
-        # ALU signals
-        with m.If(~stall_x):
-            with m.Switch(format_x):
-                with m.Case(Format.R_type):
-                    with m.If(rs1_RAW):
-                        m.d.comb += alu.in1.eq(rs1_value_RAW)
-                    with m.Else():
-                        m.d.comb += alu.in1.eq(rp1.data)
-                    with m.If(rs2_RAW):
-                        m.d.comb += alu.in2.eq(rs2_value_RAW)
-                    with m.Else():
-                        m.d.comb += alu.in2.eq(rp2.data)
+        m.d.comb += branch_addr_EX.eq(pc_EX + Cat(0b0, imm_EX[0:-1]))
+        m.d.comb += alu.i_in1.eq(r1_EX)
+        m.d.comb += alu.i_in2.eq(Mux(todo, imm_EX, r2_EX))
+        m.d.comb += alu_out_EX.eq(alu.o_out)
+        m.d.comb += zero_EX.eq(alu.o_zero)
 
-                    m.d.comb += alu.funct3.eq(funct3_x)
-                    m.d.comb += alu.funct7.eq(funct7_x)
+        #
+        # Memory stage (MEM)
+        #
+        m.d.sync += r2_MEM.eq(r2_EX)
+        m.d.sync += rd_MEM.eq(rd_EX)
+        m.d.sync += branch_addr_MEM.eq(branch_addr_EX)
+        m.d.sync += alu_out_MEM.eq(alu_out_EX)
+        m.d.sync += zero_MEM.eq(zero_EX)
 
-                    # For cleanness sake, prefer this...
-                    with m.If(rd_x != 0):
-                        m.d.comb += wp.data.eq(alu.out)
-                        m.d.comb += wp.addr.eq(rd_x)
-                        m.d.comb += wp.en.eq(1)
-                    # over this...
-                    # m.d.comb += wp.data.eq(alu.out)
-                    # m.d.comb += wp.addr.eq(rd_x)
-                    # m.d.comb += wp.en.eq(rd_x != 0)
-                with m.Case(Format.I_type):
-                    with m.If(rs1_RAW):
-                        m.d.comb += alu.in1.eq(rs1_value_RAW)
-                    with m.Else():
-                        m.d.comb += alu.in1.eq(rp1.data)
+        m.d.comb += self.o_d_addr.eq(alu_out_MEM)
+        m.d.comb += self.o_d_data.eq(r2_MEM)
+        m.d.comb += data_MEM.eq(self.i_data)
 
-                    m.d.comb += alu.in2.eq(rs2_value_d)
-                    m.d.comb += alu.funct3.eq(funct3_x)
+        #
+        # Write-back stage (WB)
+        #
+        m.d.sync += rd_WB.eq(rd_MEM)
+        m.d.sync += data_WB.eq(data_MEM)
+        m.d.sync += alu_out_WB.eq(alu_out_MEM)
 
-                    # For cleanness sake, prefer this...
-                    with m.If(rd_x != 0):
-                        m.d.comb += wp.data.eq(alu.out)
-                        m.d.comb += wp.addr.eq(rd_x)
-                        m.d.comb += wp.en.eq(1)
-                    # over this...
-                    # m.d.comb += wp.data.eq(alu.out)
-                    # m.d.comb += wp.addr.eq(rd_x)
-                    # m.d.comb += wp.en.eq(rd_x != 0)
-                with m.Case(Format.S_type, Format.U_type):
-                    with m.If(rs1_RAW):
-                        m.d.comb += alu.in1.eq(rs1_value_RAW)
-                    with m.Else():
-                        m.d.comb += alu.in1.eq(rp1.data)
-
-                    m.d.comb += alu.in2.eq(rs2_value_d)
-                    m.d.comb += alu.funct3.eq(Funct3.ADD)
-
-                    # For cleanness sake, prefer this...
-                    with m.If(rd_x != 0):
-                        m.d.comb += wp.data.eq(alu.out)
-                        m.d.comb += wp.addr.eq(rd_x)
-                        m.d.comb += wp.en.eq(1)
-                    # over this...
-                    # m.d.comb += wp.data.eq(alu.out)
-                    # m.d.comb += wp.addr.eq(rd_x)
-                    # m.d.comb += wp.en.eq(rd_x != 0)
-                with m.Case(Format.B_type):
-                    m.d.comb += alu.in1.eq(rs1_value_d)
-                    m.d.comb += alu.in2.eq(rs2_value_d)
-                    m.d.comb += alu.funct3.eq(Funct3.ADD)
-
-                    with m.If(rs1_RAW):
-                        m.d.comb += branch.in1.eq(rs1_value_RAW)
-                    with m.Else():
-                        m.d.comb += branch.in1.eq(rp1.data)
-
-                    with m.If(rs2_RAW):
-                        m.d.comb += branch.in2.eq(rs2_value_RAW)
-                    with m.Else():
-                        m.d.comb += branch.in2.eq(rp2.data)
-
-                    m.d.comb += branch.br_insn.eq(funct3_x)
-                with m.Case(Format.J_type):
-                    m.d.comb += alu.in1.eq(rs1_value_d)
-                    m.d.comb += alu.in2.eq(rs2_value_d)
-                    m.d.comb += alu.funct3.eq(Funct3.ADD)
-                    
-                    # For cleanness sake, prefer this...
-                    with m.If(rd_x != 0):
-                        m.d.comb += wp.data.eq(pc_wb)
-                        m.d.comb += wp.addr.eq(rd_x)
-                        m.d.comb += wp.en.eq(1)
-                    # over this...
-                    # m.d.comb += wp.data.eq(pc_wb)
-                    # m.d.comb += wp.addr.eq(rd_x)
-                    # m.d.comb += wp.en.eq(rd_x != 0)
-
-        ####################
-        # Write-back stage #
-        ####################
-
-        m.d.sync += pc_wb.eq(pc_x)
-        m.d.sync += format_wb.eq(format_x)
-        m.d.sync += alu_out_wb.eq(alu.out)
-
-        m.d.sync += stall_wb.eq(stall_x)
-
-        # with m.If((~stall_wb)):
-        #     with m.Switch(format_wb):
-        #         with m.Case(Format.S_type):
-
-        #         # with m.Case(Format.R_type, Format.I_type, Format.U_type):
-        #         #     m.d.comb += wp.en.eq(1)
-        #         #     m.d.comb += wp.data.eq(alu_out_wb)
-        #         #     m.d.comb += wp.addr.eq(rd_wb)
-        #         # with m.Case(Format.J_type):
-        #         #     # JAL stores PC+4 in the destination
-        #         #     # register, however pc_x already has PC+4
-        #         #     # stored in it, so don't add 4 to it.
-        #         #     m.d.comb += wp.en.eq(1)
-        #         #     m.d.comb += wp.data.eq(pc_wb)
-        #         #     m.d.comb += wp.addr.eq(rd_x)
-        #         with m.Default():
-        #             m.d.comb += wp.en.eq(0)
-        # with m.Else():
-        #     m.d.comb += wp.en.eq(0)
-
-        # RVFI
-        if self.rvfi:
-            m.d.sync += self.rvfi_valid.eq((~ResetSignal()) & (~self.trap) & (~stall_wb))
-            m.d.sync += self.rvfi_trap.eq(self.trap)
-            m.d.sync += self.rvfi_insn.eq(self.ibus.dat_r)
-            m.d.sync += self.rvfi_pc_rdata.eq(pc)
-            m.d.sync += self.rvfi_pc_wdata.eq(pc_x)
-            m.d.sync += self.rvfi_rs1_addr.eq(decoder.rs1)
-            m.d.sync += self.rvfi_rs2_addr.eq(decoder.rs2)
-            m.d.sync += self.rvfi_rs1_rdata.eq(rs1_value_d)
-            m.d.sync += self.rvfi_rs2_rdata.eq(rs2_value_d)
-            m.d.sync += self.rvfi_rd_addr.eq(decoder.rd)
-            m.d.sync += self.rvfi_rd_wdata.eq(alu_out_wb)
-            m.d.sync += self.rvfi_mem_addr.eq(self.ibus.adr)
-            m.d.sync += self.rvfi_mem_rdata.eq(self.ibus.dat_r)
-            
-            m.d.comb += self.rvfi_mode.eq(0)
-            m.d.comb += self.rvfi_ixl.eq(1)
+        m.d.comb += data_val_WB.eq(Mux(todo, data_WB, alu_out_WB))
 
         return m
-
+ 
 
 if __name__ == "__main__":
-    data = []
-
-    with open("programs/hex.bin", "rb") as f:
-        bindata = f.read()
-
-    for i in range(len(bindata) // 4):
-        w = bindata[4*i : 4*i+4]
-        data.append(int("%02x%02x%02x%02x" % (w[3], w[2], w[1], w[0]), 16))
-
     top = Module()
-    top.submodules.cpu = cpu = CPU(xlen=XLEN.RV32, with_RVFI=False)
-    top.submodules.interconnect = itcnt = Interconnect(ROM(data), 512)
+    top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False)
 
-    top.d.comb += cpu.ibus.connect(itcnt.imux.bus)
-    top.d.comb += cpu.dbus.connect(itcnt.dmux.bus)
+    mem = {
+        0x0000_0000: RV32_I(imm= 0x01, rs1=0, rd =1, funct3=Funct3.ADD),
+        0x0000_0004: RV32_I(imm= 0x01, rs1=1, rd =1, funct3=Funct3.SLL),
+        0x0000_0008: RV32_B(imm= 0x1C, rs1=1, rs2=2, funct3=Funct3.BEQ),
+        0x0000_000C: RV32_I(imm= 0x01, rs1=2, rd =2, funct3=Funct3.ADD),
+        0x0000_0010: RV32_J(imm=-0x08, rd =0, opcode=J_Instr.JAL),
+        0x0000_0024: RV32_J(imm=-0x24, rd =0, opcode=J_Instr.JAL),
+    }
 
-    # top.submodules.imem = mem = ROM(data)
-    # top.d.comb += cpu.ibus.connect(mem.new_bus())
+    with top.Switch(cpu.o_i_addr):
+        for addr, data in mem.items():
+            with top.Case(addr):
+                top.d.sync += cpu.i_instr.eq(data)
+                top.d.sync += cpu.i_stall.eq(0)
+        with top.Default():
+            top.d.sync += cpu.i_instr.eq(0)
+            top.d.sync += cpu.i_stall.eq(1)
 
     def bench():
         yield
-        assert not (yield cpu.trap)
+        assert not (yield cpu.o_trap)
 
-        for _ in range(len(data)):
+        for _ in range(len(mem)):
             yield
-            assert not (yield cpu.trap)
+            assert not (yield cpu.o_trap)
         
-        for _ in range(400):
-            yield
-            assert not (yield cpu.trap)
+        # for _ in range(30):
+        #     yield
+        #     assert not (yield cpu.o_trap)
         
     sim = Simulator(top)
     sim.add_clock(1e-6)
