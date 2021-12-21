@@ -17,7 +17,7 @@ class ALU(Elaboratable):
 
         # Output
         self.o_out    = Signal(xlen.value)  # ALU output
-        self.o_zero   = Signal()            # Result is zero
+        # self.o_zero   = Signal()            # Result is zero
 
     def ports(self) -> List[Signal]:
         return [
@@ -26,7 +26,7 @@ class ALU(Elaboratable):
             self.i_funct3,
             self.alt_func,
             self.o_out,
-            self.o_zero
+            # self.o_zero
         ]
 
     def elaborate(self, platform: Platform) -> Module:
@@ -57,7 +57,7 @@ class ALU(Elaboratable):
                 m.d.comb += self.o_out.eq(Mux(alt_func, self.i_in1.as_signed()
                                             >> self.i_in2[:5], self.i_in1 >> self.i_in2[:5]))
 
-        m.d.comb += self.o_zero.eq(self.o_out == 0)
+        # m.d.comb += self.o_zero.eq(self.o_out == 0)
 
         return m
 

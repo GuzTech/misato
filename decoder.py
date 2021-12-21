@@ -16,6 +16,7 @@ class Decoder(Elaboratable):
 
         # Outputs
         self.format = Signal(Format)
+        self.opcode = Signal(Opcode)
         self.r_type = Signal()
         self.i_type = Signal()
         self.u_type = Signal()
@@ -38,6 +39,7 @@ class Decoder(Elaboratable):
         return [
             self.instr,
             self.format,
+            self.opcode,
             self.r_type,
             self.i_type,
             self.s_type,
@@ -51,7 +53,7 @@ class Decoder(Elaboratable):
             self.funct3,
             self.funct7,
             self.u_instr,
-            self.trap
+            self.trap,
         ]
 
     def elaborate(self, platform: Platform) -> Module:
@@ -90,7 +92,8 @@ class Decoder(Elaboratable):
             self.rs2.eq(rs2),
             self.rd.eq(rd),
             self.funct3.eq(funct3),
-            self.funct7.eq(funct7)
+            self.funct7.eq(funct7),
+            self.opcode.eq(opcode),
         ]
 
         with m.Switch(opcode):
