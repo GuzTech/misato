@@ -104,6 +104,7 @@ class Misato(Elaboratable):
 
         m.submodules.decoder = decoder = Decoder(self.xlen)
         m.submodules.alu     = alu     = ALU(self.xlen)
+        m.submodules.branch  = branch  = Branch(self.xlen)
 
         # Register file
         regfile = Memory(width=self.xlen.value, depth=32)
@@ -114,6 +115,7 @@ class Misato(Elaboratable):
         ###########
         # Signals #
         ###########
+
         branch_taken = Signal()
         todo = Signal()
         m.d.comb += branch_taken.eq(0)
@@ -153,6 +155,15 @@ class Misato(Elaboratable):
         u_instr_ID      = Signal(U_Type)            # U type instruction
         trap_ID         = Signal()                  # Illegal instruction
 
+        # Control signals
+        pc_source_C_ID  = Signal()                  # pc_next source selector
+        reg_write_C_ID  = Signal()
+        mem_write_C_ID  = Signal()
+        mem_read_C_ID   = Signal()
+        mem_to_reg_C_ID = Signal()
+        branch_C_ID     = Signal()                  # 
+        alu_source_C_ID = Signal()                  # ALU input #2 source
+
         #
         # Execute stage signals (EX)
         #
@@ -160,10 +171,14 @@ class Misato(Elaboratable):
         r1_EX           = Signal(self.xlen.value)   # Source register #1 value
         r2_EX           = Signal(self.xlen.value)   # Source register #2 value
         rd_EX           = Signal(5)                 # Destination register
+        funct3_EX       = Signal(Funct3)            # Funct3 field
+        funct7_EX       = Signal(Funct7)            # Funct7 field
         imm_EX          = Signal(self.xlen.value)   # Immediate value
         branch_addr_EX  = Signal(self.xlen.value)   # Branch address
         alu_out_EX      = Signal(self.xlen.value)   # ALU output
         zero_EX         = Signal()                  # ALU result is zero
+        alu_source_C_EX = Signal()                  # ALU input #2 source
+        b_type_EX       = Signal()                  # B type instruction
 
         #
         #  Memory stage signals (MEM)
@@ -174,6 +189,8 @@ class Misato(Elaboratable):
         data_MEM        = Signal(self.xlen.value)   # Data value read from data memory
         alu_out_MEM     = Signal(self.xlen.value)   # ALU output
         zero_MEM        = Signal()                  # ALU result is zero
+        take_branch_MEM = Signal()                  # Branch unit output
+        pc_source_C_MEM = Signal()                  # pc_next source selector
 
         # 
         # Write-back stage signals (WB)
@@ -191,10 +208,11 @@ class Misato(Elaboratable):
         # Instruction fetch stage (IF)
         #
         m.d.comb += pc_p4_IF.eq(pc_IF + 4)
-        m.d.comb += pc_next_IF.eq(Mux(branch_taken, branch_addr_MEM, pc_p4_IF))
+        m.d.comb += pc_next_IF.eq(Mux(pc_source_C_MEM, branch_addr_MEM, pc_p4_IF))
 
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += self.o_i_addr.eq(pc_IF)
+        m.d.comb += instr_IF.eq(self.i_instr)
 
         #
         # Instruction decode stage (ID)
@@ -221,38 +239,67 @@ class Misato(Elaboratable):
             trap_ID   .eq(decoder.trap)
         ]
 
+        # m.d.comb += pc_source_C_ID.eq(branch_C_ID & zero_MEM)
+        m.d.comb += pc_source_C_ID.eq(branch_C_ID & zero_MEM)
+        m.d.comb += reg_write_C_ID.eq(0)
+        m.d.comb += mem_write_C_ID.eq(0)
+        m.d.comb += mem_read_C_ID.eq(0)
+        m.d.comb += mem_to_reg_C_ID.eq(0)
+        m.d.comb += branch_C_ID.eq(0)
+        m.d.comb += alu_source_C_ID.eq(0)
+
         m.d.comb += rp1.addr.eq(rs1_ID)
         m.d.comb += rp2.addr.eq(rs2_ID)
         m.d.comb += wp.addr.eq(rd_WB)
         m.d.comb += wp.data.eq(data_val_WB)
+        m.d.comb += wp.en.eq(reg_write_C_ID)
 
         #
         # Execute stage (EX)
         #
-        m.d.sync += pc_EX.eq(pc_ID)
-        m.d.sync += r1_EX.eq(r1_ID)
-        m.d.sync += r2_EX.eq(r2_ID)
-        m.d.sync += rd_EX.eq(rd_ID)
-        m.d.sync += imm_EX.eq(imm_ID)
+        m.d.sync += [
+            pc_EX.eq(pc_ID),
+            r1_EX.eq(r1_ID),
+            r2_EX.eq(r2_ID),
+            rd_EX.eq(rd_ID),
+            funct3_EX.eq(funct3_ID),
+            funct7_EX.eq(funct7_ID),
+            imm_EX.eq(imm_ID),
+            alu_source_C_EX.eq(alu_source_C_ID),
+            b_type_EX.eq(b_type_ID),
+        ]
 
-        m.d.comb += branch_addr_EX.eq(pc_EX + Cat(0b0, imm_EX[0:-1]))
-        m.d.comb += alu.i_in1.eq(r1_EX)
-        m.d.comb += alu.i_in2.eq(Mux(todo, imm_EX, r2_EX))
-        m.d.comb += alu_out_EX.eq(alu.o_out)
-        m.d.comb += zero_EX.eq(alu.o_zero)
+        m.d.comb += [
+            branch_addr_EX.eq(pc_EX + Cat(0b0, imm_EX[0:-1])),
+            alu.i_in1.eq(r1_EX),
+            alu.i_in2.eq(Mux(alu_source_C_EX, imm_EX, r2_EX)),
+            alu.i_funct3.eq(funct3_EX),
+            alu.i_funct7.eq(funct7_EX),
+            alu_out_EX.eq(alu.o_out),
+            zero_EX.eq(alu.o_zero),
+            branch.in1.eq(r1_EX),
+            branch.in2.eq(Mux(alu_source_C_EX, imm_EX, r2_EX)),
+            branch.br_insn.eq(funct3_EX),
+        ]
 
         #
         # Memory stage (MEM)
         #
-        m.d.sync += r2_MEM.eq(r2_EX)
-        m.d.sync += rd_MEM.eq(rd_EX)
-        m.d.sync += branch_addr_MEM.eq(branch_addr_EX)
-        m.d.sync += alu_out_MEM.eq(alu_out_EX)
-        m.d.sync += zero_MEM.eq(zero_EX)
+        m.d.sync += [
+            r2_MEM.eq(r2_EX),
+            rd_MEM.eq(rd_EX),
+            branch_addr_MEM.eq(branch_addr_EX),
+            alu_out_MEM.eq(alu_out_EX),
+            zero_MEM.eq(zero_EX),
+            b_type_EX.eq(b_type_ID),
+            take_branch_MEM.eq(branch.take_branch),
+        ]
 
         m.d.comb += self.o_d_addr.eq(alu_out_MEM)
         m.d.comb += self.o_d_data.eq(r2_MEM)
         m.d.comb += data_MEM.eq(self.i_data)
+
+        m.d.comb += pc_source_C_MEM.eq(b_type_EX & take_branch_MEM)
 
         #
         # Write-back stage (WB)
