@@ -185,6 +185,9 @@ class Misato(Elaboratable):
         mem_to_reg_C_EX  = Signal()                 # Mem or ALU result to register
         alu_source_C_EX  = Signal()                 # ALU input #2 source
         b_type_EX        = Signal()                 # B type instruction
+        in1_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #1
+        in2_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #2
+        in2_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #2
 
         #
         #  Memory stage signals (MEM)
@@ -285,16 +288,47 @@ class Misato(Elaboratable):
             b_type_EX.eq(b_type_ID),
         ]
 
+        # ALU signals
         m.d.comb += [
-            branch_addr_EX.eq(pc_EX + imm_EX),
-            # alu.i_in1.eq(r1_EX),
-            # alu.i_in2.eq(Mux(alu_source_C_EX, imm_EX, r2_EX)),
+            in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX)),
+            alu.i_in1.eq(in1_EX),
+            alu.i_in2.eq(in2_EX),
             alu.i_funct3.eq(funct3_EX),
             alu.i_funct7.eq(funct7_EX),
             alu_out_EX.eq(alu.o_out),
-            branch.in1.eq(r1_EX),
-            branch.in2.eq(Mux(alu_source_C_EX, imm_EX, r2_EX)),
+        ]
+
+        # ALU forwarding
+        with m.Switch(fwd.o_fwdA):
+            with m.Case(0b00):
+                m.d.comb += in1_EX.eq(r1_EX)
+            with m.Case(0b01):
+                m.d.comb += in1_EX.eq(data_val_WB)
+            with m.Case(0b10):
+                m.d.comb += in1_EX.eq(alu_out_MEM)
+            with m.Default():
+                m.d.comb += in1_EX.eq(0)
+
+        with m.Switch(fwd.o_fwdB):
+            with m.Case(0b00):
+                m.d.comb += in2_fwd_EX.eq(r2_EX)
+            with m.Case(0b01):
+                m.d.comb += in2_fwd_EX.eq(data_val_WB)
+            with m.Case(0b10):
+                m.d.comb += in2_fwd_EX.eq(alu_out_MEM)
+            with m.Default():
+                m.d.comb += in2_fwd_EX.eq(0)
+
+        # Branch unit signals
+        m.d.comb += [
+            branch_addr_EX.eq(pc_EX + imm_EX),
+            branch.in1.eq(in1_EX),
+            branch.in2.eq(in2_EX),
             branch.br_insn.eq(funct3_EX),
+        ]
+
+        # Fowarding unit signals
+        m.d.comb += [
             fwd.i_rs1_EX.eq(rs1_EX),
             fwd.i_rs2_EX.eq(rs2_EX),
             fwd.i_rd_MEM.eq(rd_MEM),
@@ -302,27 +336,6 @@ class Misato(Elaboratable):
             fwd.i_reg_wr_MEM.eq(reg_write_C_MEM),
             fwd.i_reg_wr_WB.eq(reg_write_C_WB),
         ]
-
-        # ALU forwarding
-        with m.Switch(fwd.o_fwdA):
-            with m.Case(0b00):
-                m.d.comb += alu.i_in1.eq(r1_EX)
-            with m.Case(0b01):
-                m.d.comb += alu.i_in1.eq(data_val_WB)
-            with m.Case(0b10):
-                m.d.comb += alu.i_in1.eq(alu_out_MEM)
-            with m.Default():
-                m.d.comb += alu.i_in1.eq(0)
-
-        with m.Switch(fwd.o_fwdB):
-            with m.Case(0b00):
-                m.d.comb += alu.i_in2.eq(r2_EX)
-            with m.Case(0b01):
-                m.d.comb += alu.i_in2.eq(data_val_WB)
-            with m.Case(0b10):
-                m.d.comb += alu.i_in2.eq(alu_out_MEM)
-            with m.Default():
-                m.d.comb += alu.i_in2.eq(0)
 
         #
         # Memory stage (MEM)

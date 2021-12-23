@@ -1,21 +1,21 @@
 [*]
 [*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
-[*] Thu Dec 23 11:20:04 2021
+[*] Thu Dec 23 11:50:38 2021
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Thu Dec 23 11:12:21 2021"
-[dumpfile_size] 16647
+[dumpfile_mtime] "Thu Dec 23 11:46:52 2021"
+[dumpfile_size] 17456
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/my.gtkw"
 [timestart] 0
 [size] 1920 1033
 [pos] -1 -1
-*-21.178595 2060000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-21.178595 2120000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] bench.
 [treeopen] bench.top.
 [treeopen] bench.top.cpu.
-[sst_width] 37
+[sst_width] 236
 [signals_width] 256
-[sst_expanded] 0
+[sst_expanded] 1
 [sst_vpaned_height] 308
 @28
 bench.top.cpu.clk
@@ -24,21 +24,17 @@ bench.top.cpu.rst
 -=== CPU ===
 @22
 [color] 1
-bench.top.cpu.instr[31:0]
-[color] 1
 bench.top.cpu.instr_IF[31:0]
-[color] 1
-bench.top.cpu.instr_IF2[31:0]
-[color] 1
-bench.top.cpu.instr_ID[31:0]
 [color] 1
 bench.top.cpu.pc_IF[31:0]
 [color] 1
-bench.top.cpu.pc_IF2[31:0]
+bench.top.cpu.pc_next_IF[31:0]
+@28
 [color] 1
-bench.top.cpu.pc_ID[31:0]
+bench.top.cpu.pc_source_C_MEM
+@22
 [color] 1
-bench.top.cpu.pc_EX[31:0]
+bench.top.cpu.branch_addr_MEM[31:0]
 @200
 -=== DECODER ===
 @22
@@ -49,22 +45,88 @@ bench.top.cpu.decoder.instr[31:0]
 bench.top.cpu.decoder.format
 [color] 2
 bench.top.cpu.decoder.opcode
-@22
+@24
 [color] 2
 bench.top.cpu.decoder.rs1[4:0]
 [color] 2
 bench.top.cpu.decoder.rs2[4:0]
 [color] 2
 bench.top.cpu.decoder.rd[4:0]
-@420
+@c00022
 [color] 2
 bench.top.cpu.decoder.imm[31:0]
+@28
+[color] 2
+(0)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(1)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(2)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(3)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(4)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(5)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(6)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(7)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(8)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(9)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(10)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(11)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(12)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(13)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(14)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(15)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(16)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(17)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(18)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(19)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(20)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(21)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(22)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(23)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(24)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(25)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(26)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(27)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(28)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(29)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(30)bench.top.cpu.decoder.imm[31:0]
+[color] 2
+(31)bench.top.cpu.decoder.imm[31:0]
+@1401200
+-group_end
 @200
 -=== ALU ===
-@29
+@28
 [color] 3
 bench.top.cpu.alu.i_funct3
-@28
 [color] 3
 bench.top.cpu.alu.i_funct7
 @420
