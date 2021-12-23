@@ -130,9 +130,6 @@ class Misato(Elaboratable):
         pc_p4_IF         = Signal(self.xlen.value)  # Current program counter value + 4
         instr_IF         = Signal(self.xlen.value,  # Fetched instruction
                                   reset=NOP)
-        pc_IF2           = Signal(self.xlen.value)
-        instr_IF2        = Signal(self.xlen.value,  # Fetched instruction
-                                  reset=NOP)
 
         #
         # Instruction decode stage signals (ID)
@@ -202,6 +199,7 @@ class Misato(Elaboratable):
         pc_source_C_MEM  = Signal()                 # pc_next source selector
         reg_write_C_MEM  = Signal()                 # Write to register file
         mem_to_reg_C_MEM = Signal()                 # Mem or ALU result to register
+        b_type_MEM       = Signal()                 # B type instruction
 
         # 
         # Write-back stage signals (WB)
@@ -224,16 +222,14 @@ class Misato(Elaboratable):
         m.d.comb += pc_next_IF.eq(Mux(pc_source_C_MEM, branch_addr_MEM, pc_p4_IF))
 
         m.d.sync += pc_IF.eq(pc_next_IF)
-        m.d.sync += pc_IF2.eq(pc_IF)
         m.d.comb += self.o_i_addr.eq(pc_IF)
         m.d.comb += instr_IF.eq(self.i_instr)
-        m.d.sync += instr_IF2.eq(instr_IF)
 
         #
         # Instruction decode stage (ID)
         #
-        m.d.sync += pc_ID.eq(pc_IF2)
-        m.d.sync += instr_ID.eq(instr_IF2)
+        m.d.sync += pc_ID.eq(pc_IF)
+        m.d.sync += instr_ID.eq(instr_IF)
 
         m.d.comb += decoder.instr.eq(instr_ID)
         m.d.comb += [
@@ -290,8 +286,7 @@ class Misato(Elaboratable):
         ]
 
         m.d.comb += [
-            branch_addr_EX.eq(pc_EX + Cat(0b0, imm_EX[0:-1]) - 4),
-            # branch_addr_EX.eq(pc_EX + imm_EX - 4),
+            branch_addr_EX.eq(pc_EX + imm_EX),
             # alu.i_in1.eq(r1_EX),
             # alu.i_in2.eq(Mux(alu_source_C_EX, imm_EX, r2_EX)),
             alu.i_funct3.eq(funct3_EX),
@@ -305,7 +300,7 @@ class Misato(Elaboratable):
             fwd.i_rd_MEM.eq(rd_MEM),
             fwd.i_rd_WB.eq(rd_WB),
             fwd.i_reg_wr_MEM.eq(reg_write_C_MEM),
-            fwd.i_reg_wr_WB.eq(reg_write_C_WB)
+            fwd.i_reg_wr_WB.eq(reg_write_C_WB),
         ]
 
         # ALU forwarding
@@ -339,7 +334,7 @@ class Misato(Elaboratable):
             alu_out_MEM.eq(alu_out_EX),
             reg_write_C_MEM.eq(reg_write_C_EX),
             mem_to_reg_C_MEM.eq(mem_to_reg_C_EX),
-            b_type_EX.eq(b_type_ID),
+            b_type_MEM.eq(b_type_EX),
             take_branch_MEM.eq(branch.take_branch),
         ]
 
@@ -347,7 +342,7 @@ class Misato(Elaboratable):
         m.d.comb += self.o_d_data.eq(r2_MEM)
         m.d.comb += data_MEM.eq(self.i_data)
 
-        m.d.comb += pc_source_C_MEM.eq(b_type_EX & take_branch_MEM)
+        m.d.comb += pc_source_C_MEM.eq(b_type_MEM & take_branch_MEM)
 
         #
         # Write-back stage (WB)
@@ -395,11 +390,11 @@ if __name__ == "__main__":
     with top.Switch(cpu.o_i_addr):
         for addr, data in imem.items():
             with top.Case(addr):
-                top.d.sync += cpu.i_instr.eq(data)
-                top.d.sync += cpu.i_stall.eq(0)
+                top.d.comb += cpu.i_instr.eq(data)
+                top.d.comb += cpu.i_stall.eq(0)
         with top.Default():
-            top.d.sync += cpu.i_instr.eq(0)
-            top.d.sync += cpu.i_stall.eq(1)
+            top.d.comb += cpu.i_instr.eq(0)
+            top.d.comb += cpu.i_stall.eq(1)
 
     top.d.comb += dmem_r.addr.eq(cpu.o_d_addr)
     # top.d.comb += dmem_r.en.eq(cpu.o_d_Rd)

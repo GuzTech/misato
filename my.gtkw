@@ -1,0 +1,129 @@
+[*]
+[*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
+[*] Thu Dec 23 11:20:04 2021
+[*]
+[dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
+[dumpfile_mtime] "Thu Dec 23 11:12:21 2021"
+[dumpfile_size] 16647
+[savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/my.gtkw"
+[timestart] 0
+[size] 1920 1033
+[pos] -1 -1
+*-21.178595 2060000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] bench.
+[treeopen] bench.top.
+[treeopen] bench.top.cpu.
+[sst_width] 37
+[signals_width] 256
+[sst_expanded] 0
+[sst_vpaned_height] 308
+@28
+bench.top.cpu.clk
+bench.top.cpu.rst
+@200
+-=== CPU ===
+@22
+[color] 1
+bench.top.cpu.instr[31:0]
+[color] 1
+bench.top.cpu.instr_IF[31:0]
+[color] 1
+bench.top.cpu.instr_IF2[31:0]
+[color] 1
+bench.top.cpu.instr_ID[31:0]
+[color] 1
+bench.top.cpu.pc_IF[31:0]
+[color] 1
+bench.top.cpu.pc_IF2[31:0]
+[color] 1
+bench.top.cpu.pc_ID[31:0]
+[color] 1
+bench.top.cpu.pc_EX[31:0]
+@200
+-=== DECODER ===
+@22
+[color] 2
+bench.top.cpu.decoder.instr[31:0]
+@28
+[color] 2
+bench.top.cpu.decoder.format
+[color] 2
+bench.top.cpu.decoder.opcode
+@22
+[color] 2
+bench.top.cpu.decoder.rs1[4:0]
+[color] 2
+bench.top.cpu.decoder.rs2[4:0]
+[color] 2
+bench.top.cpu.decoder.rd[4:0]
+@420
+[color] 2
+bench.top.cpu.decoder.imm[31:0]
+@200
+-=== ALU ===
+@29
+[color] 3
+bench.top.cpu.alu.i_funct3
+@28
+[color] 3
+bench.top.cpu.alu.i_funct7
+@420
+[color] 3
+bench.top.cpu.alu.i_in1[31:0]
+[color] 3
+bench.top.cpu.alu.i_in2[31:0]
+[color] 3
+bench.top.cpu.alu.o_out[31:0]
+@200
+-=== FORDWARD ===
+@28
+[color] 7
+bench.top.cpu.fwd.ex_hazard
+[color] 7
+bench.top.cpu.fwd.ex_rs1_hazard
+[color] 7
+bench.top.cpu.fwd.ex_rs2_hazard
+@22
+[color] 7
+bench.top.cpu.fwd.i_rd_MEM[4:0]
+[color] 7
+bench.top.cpu.fwd.i_rd_WB[4:0]
+@28
+[color] 7
+bench.top.cpu.fwd.i_reg_wr_MEM
+[color] 7
+bench.top.cpu.fwd.i_reg_wr_WB
+@22
+[color] 7
+bench.top.cpu.fwd.i_rs1_EX[4:0]
+[color] 7
+bench.top.cpu.fwd.i_rs2_EX[4:0]
+@28
+[color] 7
+bench.top.cpu.fwd.mem_hazard
+[color] 7
+bench.top.cpu.fwd.mem_rs1_hazard
+[color] 7
+bench.top.cpu.fwd.mem_rs2_hazard
+[color] 7
+bench.top.cpu.fwd.o_fwdA[1:0]
+[color] 7
+bench.top.cpu.fwd.o_fwdB[1:0]
+@200
+-=== REGS ===
+@420
+[color] 4
+bench.top.cpu.wp.memory(1)[31:0]
+[color] 4
+bench.top.cpu.wp.memory(2)[31:0]
+@24
+[color] 4
+bench.top.cpu.wp.regfile_w_addr[4:0]
+@420
+[color] 4
+bench.top.cpu.wp.regfile_w_data[31:0]
+@28
+[color] 4
+bench.top.cpu.wp.regfile_w_en
+[pattern_trace] 1
+[pattern_trace] 0
