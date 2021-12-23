@@ -1,22 +1,22 @@
 [*]
 [*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
-[*] Thu Dec 23 11:50:38 2021
+[*] Thu Dec 23 20:58:19 2021
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Thu Dec 23 11:46:52 2021"
-[dumpfile_size] 17456
+[dumpfile_mtime] "Thu Dec 23 20:57:39 2021"
+[dumpfile_size] 33565
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/my.gtkw"
-[timestart] 0
+[timestart] 9970000
 [size] 1920 1033
 [pos] -1 -1
-*-21.178595 2120000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-21.178595 7040000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] bench.
 [treeopen] bench.top.
 [treeopen] bench.top.cpu.
-[sst_width] 236
+[sst_width] 37
 [signals_width] 256
-[sst_expanded] 1
-[sst_vpaned_height] 308
+[sst_expanded] 0
+[sst_vpaned_height] 341
 @28
 bench.top.cpu.clk
 bench.top.cpu.rst
@@ -27,14 +27,17 @@ bench.top.cpu.rst
 bench.top.cpu.instr_IF[31:0]
 [color] 1
 bench.top.cpu.pc_IF[31:0]
-[color] 1
-bench.top.cpu.pc_next_IF[31:0]
 @28
 [color] 1
 bench.top.cpu.pc_source_C_MEM
 @22
 [color] 1
 bench.top.cpu.branch_addr_MEM[31:0]
+@25
+bench.top.cpu.bubble_count_IF[1:0]
+@28
+bench.top.cpu.insert_bubble_IF
+bench.top.cpu.pc_mod_instr_IF
 @200
 -=== DECODER ===
 @22
@@ -52,7 +55,7 @@ bench.top.cpu.decoder.rs1[4:0]
 bench.top.cpu.decoder.rs2[4:0]
 [color] 2
 bench.top.cpu.decoder.rd[4:0]
-@c00022
+@c00420
 [color] 2
 bench.top.cpu.decoder.imm[31:0]
 @28
@@ -137,7 +140,19 @@ bench.top.cpu.alu.i_in2[31:0]
 [color] 3
 bench.top.cpu.alu.o_out[31:0]
 @200
--=== FORDWARD ===
+-=== BRANCH ===
+@28
+bench.top.cpu.branch.br_insn
+@22
+bench.top.cpu.branch.in1[31:0]
+bench.top.cpu.branch.in2[31:0]
+@28
+bench.top.cpu.branch.take_branch
+@200
+-=== FORWARD ===
+@22
+bench.top.cpu.in1_EX[31:0]
+bench.top.cpu.in2_EX[31:0]
 @28
 [color] 7
 bench.top.cpu.fwd.ex_hazard
@@ -174,6 +189,7 @@ bench.top.cpu.fwd.o_fwdB[1:0]
 @200
 -=== REGS ===
 @420
+bench.top.cpu.wp.memory(0)[31:0]
 [color] 4
 bench.top.cpu.wp.memory(1)[31:0]
 [color] 4

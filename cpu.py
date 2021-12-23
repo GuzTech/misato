@@ -131,13 +131,16 @@ class Misato(Elaboratable):
         instr_IF         = Signal(self.xlen.value,  # Fetched instruction
                                   reset=NOP)
 
+        # Branch stall signals
+        bubble_count_IF  = Signal(2)
+        insert_bubble_IF = Signal()
+        pc_mod_instr_IF  = Signal()
+
         #
         # Instruction decode stage signals (ID)
         #
         pc_ID            = Signal(self.xlen.value)  # Program counter value
         instr_ID         = Signal(self.xlen.value)  # Fetched instruction
-        r1_ID            = Signal(self.xlen.value)  # Source register #1 value
-        r2_ID            = Signal(self.xlen.value)  # Source register #2 value
 
         # Instruction decoder signals
         format_ID        = Signal(Format)           # Instruction format
@@ -185,6 +188,7 @@ class Misato(Elaboratable):
         mem_to_reg_C_EX  = Signal()                 # Mem or ALU result to register
         alu_source_C_EX  = Signal()                 # ALU input #2 source
         b_type_EX        = Signal()                 # B type instruction
+        j_type_EX        = Signal()                 # J type instruction
         in1_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #1
         in2_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #2
         in2_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #2
@@ -203,6 +207,9 @@ class Misato(Elaboratable):
         reg_write_C_MEM  = Signal()                 # Write to register file
         mem_to_reg_C_MEM = Signal()                 # Mem or ALU result to register
         b_type_MEM       = Signal()                 # B type instruction
+        j_type_MEM       = Signal()                 # J type instruction
+        valid_branch_MEM = Signal()                 # Take the branch
+        valid_jump_MEM   = Signal()                 # Take the jump
 
         # 
         # Write-back stage signals (WB)
@@ -224,15 +231,28 @@ class Misato(Elaboratable):
         m.d.comb += pc_p4_IF.eq(pc_IF + 4)
         m.d.comb += pc_next_IF.eq(Mux(pc_source_C_MEM, branch_addr_MEM, pc_p4_IF))
 
-        m.d.sync += pc_IF.eq(pc_next_IF)
+        m.d.sync += pc_IF.eq(Mux(insert_bubble_IF, pc_IF, pc_next_IF))
         m.d.comb += self.o_i_addr.eq(pc_IF)
         m.d.comb += instr_IF.eq(self.i_instr)
+
+        m.d.comb += pc_mod_instr_IF.eq(
+            (instr_IF[:7] == Opcode.BRANCH) |
+            (instr_IF[:7] == Opcode.JAL) |
+            (instr_IF[:7] == Opcode.JALR)
+            )
+
+        with m.If(pc_mod_instr_IF):
+            m.d.sync += bubble_count_IF.eq(2)
+        with m.Else():
+            with m.If(insert_bubble_IF):
+                m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
+        m.d.comb += insert_bubble_IF.eq(bubble_count_IF > 0)
 
         #
         # Instruction decode stage (ID)
         #
-        m.d.sync += pc_ID.eq(pc_IF)
-        m.d.sync += instr_ID.eq(instr_IF)
+        m.d.sync += pc_ID.eq(Mux(insert_bubble_IF, pc_ID, pc_IF))
+        m.d.sync += instr_ID.eq(Mux(insert_bubble_IF, NOP, instr_IF))
 
         m.d.comb += decoder.instr.eq(instr_ID)
         m.d.comb += [
@@ -276,8 +296,6 @@ class Misato(Elaboratable):
             pc_EX.eq(pc_ID),
             rs1_EX.eq(rs1_ID),
             rs2_EX.eq(rs2_ID),
-            r1_EX.eq(r1_ID),
-            r2_EX.eq(r2_ID),
             rd_EX.eq(rd_ID),
             funct3_EX.eq(funct3_ID),
             funct7_EX.eq(funct7_ID),
@@ -286,19 +304,27 @@ class Misato(Elaboratable):
             mem_to_reg_C_EX.eq(mem_to_reg_C_ID),
             alu_source_C_EX.eq(alu_source_C_ID),
             b_type_EX.eq(b_type_ID),
+            j_type_EX.eq(j_type_ID),
         ]
 
-        # ALU signals
+        # Register file output is already registered,
+        # so just assign to rx_EX combinatorially.
         m.d.comb += [
-            in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX)),
-            alu.i_in1.eq(in1_EX),
-            alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(funct3_EX),
-            alu.i_funct7.eq(funct7_EX),
-            alu_out_EX.eq(alu.o_out),
+            r1_EX.eq(rp1.data),
+            r2_EX.eq(rp2.data),
         ]
 
-        # ALU forwarding
+        # Fowarding unit signals
+        m.d.comb += [
+            fwd.i_rs1_EX.eq(rs1_EX),
+            fwd.i_rs2_EX.eq(rs2_EX),
+            fwd.i_rd_MEM.eq(rd_MEM),
+            fwd.i_rd_WB.eq(rd_WB),
+            fwd.i_reg_wr_MEM.eq(reg_write_C_MEM),
+            fwd.i_reg_wr_WB.eq(reg_write_C_WB),
+            in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX)),
+        ]
+
         with m.Switch(fwd.o_fwdA):
             with m.Case(0b00):
                 m.d.comb += in1_EX.eq(r1_EX)
@@ -319,22 +345,21 @@ class Misato(Elaboratable):
             with m.Default():
                 m.d.comb += in2_fwd_EX.eq(0)
 
+        # ALU signals
+        m.d.comb += [
+            alu.i_in1.eq(in1_EX),
+            alu.i_in2.eq(in2_EX),
+            alu.i_funct3.eq(funct3_EX),
+            alu.i_funct7.eq(funct7_EX),
+            alu_out_EX.eq(alu.o_out),
+        ]
+
         # Branch unit signals
         m.d.comb += [
             branch_addr_EX.eq(pc_EX + imm_EX),
             branch.in1.eq(in1_EX),
             branch.in2.eq(in2_EX),
             branch.br_insn.eq(funct3_EX),
-        ]
-
-        # Fowarding unit signals
-        m.d.comb += [
-            fwd.i_rs1_EX.eq(rs1_EX),
-            fwd.i_rs2_EX.eq(rs2_EX),
-            fwd.i_rd_MEM.eq(rd_MEM),
-            fwd.i_rd_WB.eq(rd_WB),
-            fwd.i_reg_wr_MEM.eq(reg_write_C_MEM),
-            fwd.i_reg_wr_WB.eq(reg_write_C_WB),
         ]
 
         #
@@ -348,6 +373,7 @@ class Misato(Elaboratable):
             reg_write_C_MEM.eq(reg_write_C_EX),
             mem_to_reg_C_MEM.eq(mem_to_reg_C_EX),
             b_type_MEM.eq(b_type_EX),
+            j_type_MEM.eq(j_type_EX),
             take_branch_MEM.eq(branch.take_branch),
         ]
 
@@ -355,7 +381,9 @@ class Misato(Elaboratable):
         m.d.comb += self.o_d_data.eq(r2_MEM)
         m.d.comb += data_MEM.eq(self.i_data)
 
-        m.d.comb += pc_source_C_MEM.eq(b_type_MEM & take_branch_MEM)
+        m.d.comb += valid_branch_MEM.eq(b_type_MEM & take_branch_MEM)
+        m.d.comb += valid_jump_MEM.eq(j_type_MEM)
+        m.d.comb += pc_source_C_MEM.eq(valid_branch_MEM | valid_jump_MEM)
 
         #
         # Write-back stage (WB)
@@ -427,7 +455,7 @@ if __name__ == "__main__":
             yield
             assert not (yield cpu.o_trap)
         
-        for _ in range(10):
+        for _ in range(40):
             yield
             assert not (yield cpu.o_trap)
         
