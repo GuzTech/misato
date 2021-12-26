@@ -30,23 +30,24 @@ class Opcode(Enum):
 
 @unique
 class Format(Enum):
-    R_type = 0
-    I_type = 1
-    S_type = 2
-    B_type = 3
-    U_type = 4
-    J_type = 5
+    R_type       = 0
+    I_type       = 1
+    S_type       = 2
+    B_type       = 3
+    U_type       = 4
+    J_type       = 5
+    Unknown_type = 6
 
 
 class Funct3(Enum):
-    BEQ  = ADD = 0b000
-    BNE  = SLL = 0b001
-    SLT  =       0b010
-    SLTU =       0b011
-    BLT  = XOR = 0b100
-    BGE  = SR  = 0b101
-    BLTU = OR  = 0b110
-    BGEU = AND = 0b111
+    ADD = BEQ  = 0b000
+    SLL = BNE  = 0b001
+    SLT        = 0b010
+    SLTU       = 0b011
+    XOR = BLT  = 0b100
+    SR  = BGE  = 0b101
+    OR  = BLTU = 0b110
+    AND = BGEU = 0b111
 
 
 class Funct7(Enum):

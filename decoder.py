@@ -78,7 +78,7 @@ class Decoder(Elaboratable):
             rd.eq(self.instr[7:12]),
             rs1.eq(self.instr[15:20]),
             rs2.eq(self.instr[20:25]),
-            funct3.eq(self.instr[12:15]),
+            funct3.eq(Mux(self.u_type, Funct3.ADD, self.instr[12:15])),
             funct7.eq(self.instr[25:]),
             i_imm.eq(Cat(self.instr[20:], Repl(self.instr[31], 20))),
             s_imm.eq(
@@ -127,9 +127,13 @@ class Decoder(Elaboratable):
                 m.d.comb += self.j_type.eq(1)
                 m.d.comb += self.format.eq(Format.J_type)
                 m.d.comb += self.imm.eq(j_imm)
+            with m.Case(Opcode.JALR):
+                m.d.comb += self.j_type.eq(1)
+                m.d.comb += self.format.eq(Format.I_type)
+                m.d.comb += self.imm.eq(i_imm)
             with m.Default():
                 m.d.comb += [
-                    self.format.eq(Format.R_type),
+                    self.format.eq(Format.Unknown_type),
                     self.r_type.eq(0),
                     self.i_type.eq(0),
                     self.s_type.eq(0),

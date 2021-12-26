@@ -1,30 +1,26 @@
 setup:
+    li sp, 1
     li gp, 1
-    lui sp, 0x100
-    lui tp, 0x100
-    lui t0, 0x8000
+    li t0, 0x80
 
-invert:
-    xori gp, gp, 1
+left_setup:
+    li ra, 0
+    lui t1, 80
+left:
+    addi ra, ra, 1
+    blt ra, t1, [left]
 
-reset_timer:
-    lui ra, 0x0C5
-    addi ra, ra, -1216
-
-count_down:
-    beqz ra, [count_is_zero]
-    addi ra, ra, -1
-    j [count_down]
-
-count_is_zero:
-    bnez gp, [led_min_value]
-
-led_max_value:
-    beq t0, sp, [invert]
     slli sp, sp, 1
-    j [reset_timer]
+    beq sp, t0, [right_setup]
+    j [left_setup]
 
-led_min_value:
-    beq tp, sp, [invert]
+right_setup:
+    li ra, 0
+    lui t1, 80
+right:
+    add ra, ra, 1
+    blt ra, t1, [right]
+
     srli sp, sp, 1
-    j [reset_timer]
+    beq sp, gp, [left_setup]
+    j [right_setup]

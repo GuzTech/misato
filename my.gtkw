@@ -1,21 +1,21 @@
 [*]
 [*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
-[*] Thu Dec 23 20:58:19 2021
+[*] Thu Dec 23 22:06:55 2021
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Thu Dec 23 20:57:39 2021"
-[dumpfile_size] 33565
+[dumpfile_mtime] "Thu Dec 23 22:00:18 2021"
+[dumpfile_size] 38188
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/my.gtkw"
-[timestart] 9970000
+[timestart] 0
 [size] 1920 1033
 [pos] -1 -1
-*-21.178595 7040000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-21.178595 9050000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] bench.
 [treeopen] bench.top.
 [treeopen] bench.top.cpu.
-[sst_width] 37
+[sst_width] 236
 [signals_width] 256
-[sst_expanded] 0
+[sst_expanded] 1
 [sst_vpaned_height] 341
 @28
 bench.top.cpu.clk
@@ -33,11 +33,6 @@ bench.top.cpu.pc_source_C_MEM
 @22
 [color] 1
 bench.top.cpu.branch_addr_MEM[31:0]
-@25
-bench.top.cpu.bubble_count_IF[1:0]
-@28
-bench.top.cpu.insert_bubble_IF
-bench.top.cpu.pc_mod_instr_IF
 @200
 -=== DECODER ===
 @22
