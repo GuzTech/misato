@@ -1,0 +1,18 @@
+[tasks]
+bmc
+
+[options]
+mode bmc
+
+depth 2
+multiclock off
+
+[engines]
+smtbmc
+
+[script]
+read -formal decoder.v
+prep -top decoder
+
+[files]
+decoder.v
