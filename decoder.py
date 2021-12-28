@@ -108,6 +108,7 @@ class Decoder(Elaboratable):
             self.u_type.eq(0),
             self.j_type.eq(0),
             self.imm.eq(0),
+            self.trap.eq(0),
         ]
 
         with m.Switch(opcode):
