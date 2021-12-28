@@ -258,9 +258,8 @@ class Misato(Elaboratable):
 
         with m.If(pc_mod_instr_ID):
             m.d.sync += bubble_count_IF.eq(3)
-        with m.Else():
-            with m.If(insert_bubble_IF):
-                m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
+        with m.Elif(insert_bubble_IF):
+            m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
         m.d.comb += insert_bubble_IF.eq(bubble_count_IF > 0)
 
         #
@@ -296,11 +295,12 @@ class Misato(Elaboratable):
         ]
 
         m.d.comb += reg_write_C_ID.eq(
-            (opcode_ID == Opcode.LOAD) |
-            (opcode_ID == Opcode.OP) |
-            (opcode_ID == Opcode.OP_IMM) |
-            (opcode_ID == Opcode.LUI) |
-            (opcode_ID == Opcode.AUIPC)
+            ((opcode_ID == Opcode.LOAD) |
+             (opcode_ID == Opcode.OP) |
+             (opcode_ID == Opcode.OP_IMM) |
+             (opcode_ID == Opcode.LUI) |
+             (opcode_ID == Opcode.AUIPC)) &
+            rd_ID != 0
         )
         m.d.comb += mem_write_C_ID.eq(decoder.s_type)
         m.d.comb += mem_read_C_ID.eq(opcode_ID == Opcode.LOAD)
@@ -456,19 +456,37 @@ class Misato(Elaboratable):
         #
         # Formal verification
         #
-        
+        if self.formal:
+            # Check that we never write to register 0
+            with m.If(reg_write_C_WB):
+                m.d.comb += Assert(rd_WB != 0)
+
+            # Check that we always assert the trap signal
+            # in the next clock cycle whenever we encounter
+            # an instruction that we cannot decode properly.
+            with m.If((opcode_ID != Opcode.JAL) &
+                      (opcode_ID != Opcode.JALR) &
+                      (opcode_ID != Opcode.BRANCH) &
+                      (opcode_ID != Opcode.LOAD) &
+                      (opcode_ID != Opcode.LUI) &
+                      (opcode_ID != Opcode.AUIPC) &
+                      (opcode_ID != Opcode.OP) &
+                      (opcode_ID != Opcode.OP_IMM) &
+                      (opcode_ID != Opcode.STORE)):
+                m.d.comb += Assert(self.o_trap)
 
         return m
  
 
 if __name__ == "__main__":
-    formal = False
+    formal = True
 
     top = Module()
     sync = ClockDomain()
     top.domains += sync
     top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
 
+    # Knightrider program
     data = [
         # Setup
         RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),
