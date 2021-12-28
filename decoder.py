@@ -90,7 +90,7 @@ class Decoder(Elaboratable):
                          self.instr[7], self.instr[31], Repl(self.instr[31], 19))),
             u_imm.eq(Cat(Repl(C(0), 12), self.instr[12:])),
             j_imm.eq(Cat(C(0), self.instr[21:31], self.instr[20],
-                         self.instr[12:20], self.instr[31], Repl(self.instr[31], 12))),
+                         self.instr[12:20], self.instr[31], Repl(self.instr[31], 11))),
             self.rs1.eq(rs1),
             self.rs2.eq(rs2),
             self.rd.eq(rd),

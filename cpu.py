@@ -1,6 +1,7 @@
 from typing import List
 
 from amaranth import *
+from amaranth.cli import main_parser, main_runner
 from amaranth.build import Platform
 from amaranth.back import verilog
 from amaranth.sim import Simulator, Settle
@@ -145,6 +146,7 @@ class Misato(Elaboratable):
         # Instruction decode stage signals (ID)
         #
         pc_ID            = Signal(self.xlen.value)  # Program counter value
+        pc_p4_ID         = Signal(self.xlen.value)  # Current program counter value + 4
         instr_ID         = Signal(self.xlen.value)  # Fetched instruction
 
         # Instruction decoder signals
@@ -165,6 +167,8 @@ class Misato(Elaboratable):
         u_instr_ID       = Signal(U_Type)           # U type instruction
         trap_ID          = Signal()                 # Illegal instruction
         pc_mod_instr_ID  = Signal()                 # PC modifying instruction
+        JAL_instr_ID     = Signal()                 # Instruction is JAL
+        JALR_instr_ID    = Signal()                 # Instruction is JALR
 
         # Control signals
         pc_source_C_ID   = Signal()                 # pc_next source selector
@@ -178,6 +182,7 @@ class Misato(Elaboratable):
         # Execute stage signals (EX)
         #
         pc_EX            = Signal(self.xlen.value)  # Program counter value
+        pc_p4_EX         = Signal(self.xlen.value)  # Current program counter value + 4
         rs1_EX           = Signal(5)                # Source register #1
         rs2_EX           = Signal(5)                # Source register #2
         r1_EX            = Signal(self.xlen.value)  # Source register #1 value
@@ -188,6 +193,7 @@ class Misato(Elaboratable):
         funct7_EX        = Signal(Funct7)           # Funct7 field
         imm_EX           = Signal(self.xlen.value)  # Immediate value
         branch_addr_EX   = Signal(self.xlen.value)  # Branch address
+        branch_addr_t_EX = Signal(self.xlen.value)  # Temporary branch address
         alu_out_EX       = Signal(self.xlen.value)  # ALU output
         zero_EX          = Signal()                 # ALU result is zero
         reg_write_C_EX   = Signal()                 # Write to register file
@@ -202,6 +208,8 @@ class Misato(Elaboratable):
         in1_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #1
         in2_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #2
         in2_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #2
+        JAL_instr_EX     = Signal()                 # Instruction is JAL
+        JALR_instr_EX    = Signal()                 # Instruction is JALR
 
         #
         #  Memory stage signals (MEM)
@@ -266,6 +274,7 @@ class Misato(Elaboratable):
         # Instruction decode stage (ID)
         #
         m.d.sync += pc_ID.eq(pc_IF)
+        m.d.sync += pc_p4_ID.eq(pc_p4_IF)
         m.d.comb += instr_ID.eq(Mux(insert_bubble_IF, NOP, self.i_instr))
 
         m.d.comb += pc_mod_instr_ID.eq(
@@ -273,6 +282,9 @@ class Misato(Elaboratable):
             (instr_ID[:7] == Opcode.JAL) |
             (instr_ID[:7] == Opcode.JALR)
             )
+
+        m.d.comb += JAL_instr_ID.eq(opcode_ID == Opcode.JAL)
+        m.d.comb += JALR_instr_ID.eq(opcode_ID == Opcode.JALR)
 
         m.d.comb += decoder.instr.eq(instr_ID)
         m.d.comb += [
@@ -300,7 +312,7 @@ class Misato(Elaboratable):
              (opcode_ID == Opcode.OP_IMM) |
              (opcode_ID == Opcode.LUI) |
              (opcode_ID == Opcode.AUIPC) |
-             (opcode_ID == Opcode.JAL) |
+             JAL_instr_ID |
              (opcode_ID == Opcode.JALR)) &
             (rd_ID != 0)
         )
@@ -324,6 +336,7 @@ class Misato(Elaboratable):
         #
         m.d.sync += [
             pc_EX.eq(pc_ID),
+            pc_p4_EX.eq(pc_p4_ID),
             rs1_EX.eq(rs1_ID),
             rs2_EX.eq(rs2_ID),
             rd_EX.eq(rd_ID),
@@ -339,6 +352,8 @@ class Misato(Elaboratable):
             b_type_EX.eq(b_type_ID),
             j_type_EX.eq(j_type_ID),
             u_type_EX.eq(u_type_ID),
+            JAL_instr_EX.eq(JAL_instr_ID),
+            JALR_instr_EX.eq(JALR_instr_ID),
         ]
 
         # Register file output is already registered,
@@ -356,16 +371,7 @@ class Misato(Elaboratable):
             fwd.i_rd_WB.eq(rd_WB),
             fwd.i_reg_wr_MEM.eq(reg_write_C_MEM),
             fwd.i_reg_wr_WB.eq(reg_write_C_WB),
-            in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX)),
         ]
-
-        with m.If(u_type_EX):
-            with m.If(opcode_EX == Opcode.LUI):
-                m.d.comb += in1_EX.eq(0)
-            with m.Else():
-                m.d.comb += in1_EX.eq(pc_EX)
-        with m.Else():
-            m.d.comb += in1_EX.eq(in1_fwd_EX)
 
         with m.Switch(fwd.o_fwdA):
             with m.Case(0b00):
@@ -387,18 +393,39 @@ class Misato(Elaboratable):
             with m.Default():
                 m.d.comb += in2_fwd_EX.eq(0)
 
+        # in1_EX selection
+        with m.If(u_type_EX):
+            with m.If(opcode_EX == Opcode.LUI):
+                m.d.comb += in1_EX.eq(0)
+            with m.Else():
+                m.d.comb += in1_EX.eq(pc_EX)
+        with m.Elif(JAL_instr_EX | JALR_instr_EX):
+            m.d.comb += in1_EX.eq(pc_p4_EX)
+        with m.Else():
+            m.d.comb += in1_EX.eq(in1_fwd_EX)
+
+        # in2_EX selection
+        with m.If(JAL_instr_EX):
+            m.d.comb += in2_EX.eq(0)
+        with m.Elif(JALR_instr_EX):
+            m.d.comb += in2_EX.eq(r1_EX)
+        with m.Else():
+            m.d.comb += in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX))
+
         # ALU signals
         m.d.comb += [
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(funct3_EX),
+            alu.i_funct3.eq(Mux(JAL_instr_EX, Funct3.ADD, funct3_EX)),
             alu.i_funct7.eq(funct7_EX),
             alu_out_EX.eq(alu.o_out),
         ]
 
         # Branch unit signals
         m.d.comb += [
-            branch_addr_EX.eq(pc_EX + imm_EX),
+            branch_addr_t_EX.eq(Mux(JALR_instr_EX, r1_EX, pc_EX) + imm_EX),
+            branch_addr_EX[1:].eq(branch_addr_t_EX[1:]),
+            branch_addr_EX[0].eq(Mux(JALR_instr_EX, 0b0, branch_addr_t_EX[0])),
             branch.in1.eq(in1_EX),
             branch.in2.eq(in2_EX),
             branch.br_insn.eq(funct3_EX),
@@ -463,6 +490,11 @@ class Misato(Elaboratable):
             f_rst_sig = Signal()
             m.d.comb += f_rst_sig.eq(ResetSignal())
 
+            # Check that the LSB of the program counter
+            # is always zero. This is required for induction
+            # proofs to force it to be zero for n-1 cycles.
+            m.d.comb += Assert(pc_IF[0] == 0)
+
             # Check that we never write to register 0
             with m.If(reg_write_C_WB):
                 m.d.comb += Assert(rd_WB != 0)
@@ -492,11 +524,19 @@ class Misato(Elaboratable):
                       & (~Past(f_rst_sig))
                       & (~Past(f_rst_sig, 2))
                       & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
                       ):
                 m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
                 m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+
                 with m.If(rd_WB != 0):
                     m.d.comb += Assert(reg_write_C_WB)
+                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+                    # of the instruction during the ID stage, so don't add
+                    # 4 to the Past(pc_IF, 3) statement since it's already
+                    # 4 higher.
+                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+                    m.d.comb += Assert(data_val_WB[0] == 0)
                 with m.Else():
                     m.d.comb += Assert(reg_write_C_WB == 0)
 
@@ -511,55 +551,55 @@ if __name__ == "__main__":
     top.domains += sync
     top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
 
-    # Knightrider program
-    data = [
-        # Setup
-        RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),
-        RV32_I(imm= 0x01, rs1=0,        rd=3, funct3=Funct3.ADD),
-        RV32_I(imm= 0x80, rs1=0,        rd=5, funct3=Funct3.ADD),
-
-        # Left setup
-        RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
-        RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
-
-        # Left
-        RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
-        RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
-        RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SLL),
-        RV32_B(imm= 0x08, rs1=2, rs2=5,       funct3=Funct3.BEQ),
-        RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
-
-        # Right setup
-        RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
-        RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
-
-        # Right
-        RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
-        RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
-        RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),
-        RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),
-        RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
-    ]
-
-    imem = Memory(width=32, depth=64, init=data)
-    top.submodules.imem_r = imem_r = imem.read_port()
-
-    dmem = Memory(width=32, depth=16)
-    top.submodules.dmem_r = dmem_r = dmem.read_port()
-    top.submodules.dmem_w = dmem_w = dmem.write_port()
-
-    top.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
-    # top.d.sync += imem_r.en.eq(cpu.o_i_en)
-    top.d.comb += cpu.i_instr.eq(imem_r.data)
-
-    top.d.comb += dmem_r.addr.eq(cpu.o_d_addr)
-    # top.d.comb += dmem_r.en.eq(cpu.o_d_Rd)
-    top.d.comb += cpu.i_data.eq(dmem_r.data)
-    top.d.comb += dmem_w.addr.eq(cpu.o_d_addr)
-    top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
-    top.d.comb += dmem_w.data.eq(cpu.o_d_data)
-
     if not formal:
+        # Knightrider program
+        data = [
+            # Setup
+            RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),
+            RV32_I(imm= 0x01, rs1=0,        rd=3, funct3=Funct3.ADD),
+            RV32_I(imm= 0x80, rs1=0,        rd=5, funct3=Funct3.ADD),
+
+            # Left setup
+            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
+            RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+
+            # Left
+            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
+            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
+            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SLL),
+            RV32_B(imm= 0x08, rs1=2, rs2=5,       funct3=Funct3.BEQ),
+            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+
+            # Right setup
+            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
+            RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+
+            # Right
+            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
+            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
+            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),
+            RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),
+            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+        ]
+
+        imem = Memory(width=32, depth=64, init=data)
+        top.submodules.imem_r = imem_r = imem.read_port()
+
+        dmem = Memory(width=32, depth=16)
+        top.submodules.dmem_r = dmem_r = dmem.read_port()
+        top.submodules.dmem_w = dmem_w = dmem.write_port()
+
+        top.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
+        # top.d.sync += imem_r.en.eq(cpu.o_i_en)
+        top.d.comb += cpu.i_instr.eq(imem_r.data)
+
+        top.d.comb += dmem_r.addr.eq(cpu.o_d_addr)
+        # top.d.comb += dmem_r.en.eq(cpu.o_d_Rd)
+        top.d.comb += cpu.i_data.eq(dmem_r.data)
+        top.d.comb += dmem_w.addr.eq(cpu.o_d_addr)
+        top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
+        top.d.comb += dmem_w.data.eq(cpu.o_d_data)
+
         def bench():
             yield sync.rst.eq(1)
             yield
@@ -577,5 +617,9 @@ if __name__ == "__main__":
         with sim.write_vcd("cpu.vcd"):
             sim.run()
 
-    with open("cpu.v", "w") as file:
-        file.write(verilog.convert(cpu, ports=cpu.ports()))
+    parser = main_parser()
+    args = parser.parse_args()
+    main_runner(parser, args, top, ports=cpu.ports() + [sync.clk, sync.rst])
+
+    # with open("cpu.v", "w") as file:
+    #     file.write(verilog.convert(cpu, ports=cpu.ports()))

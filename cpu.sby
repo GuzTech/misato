@@ -15,8 +15,10 @@ prove: multiclock off
 smtbmc
 
 [script]
-read -formal cpu.v
+#read -formal cpu.v
+read_ilang cpu.il
 prep -top top
 
 [files]
-cpu.v
+#cpu.v
+cpu.il
