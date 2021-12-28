@@ -1,0 +1,22 @@
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 10
+bmc: multiclock off
+
+prove: mode prove
+prove: depth 10
+prove: multiclock off
+
+[engines]
+smtbmc
+
+[script]
+read -formal cpu.v
+prep -top top
+
+[files]
+cpu.v
