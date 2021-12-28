@@ -1,0 +1,8 @@
+__pycache__
+.vscode
+build
+programs/a.out
+programs/hex.bin
+*_bmc
+*_prove
+*.vcd

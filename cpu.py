@@ -299,8 +299,10 @@ class Misato(Elaboratable):
              (opcode_ID == Opcode.OP) |
              (opcode_ID == Opcode.OP_IMM) |
              (opcode_ID == Opcode.LUI) |
-             (opcode_ID == Opcode.AUIPC)) &
-            rd_ID != 0
+             (opcode_ID == Opcode.AUIPC) |
+             (opcode_ID == Opcode.JAL) |
+             (opcode_ID == Opcode.JALR)) &
+            (rd_ID != 0)
         )
         m.d.comb += mem_write_C_ID.eq(decoder.s_type)
         m.d.comb += mem_read_C_ID.eq(opcode_ID == Opcode.LOAD)
@@ -457,6 +459,10 @@ class Misato(Elaboratable):
         # Formal verification
         #
         if self.formal:
+            # Setup
+            f_rst_sig = Signal()
+            m.d.comb += f_rst_sig.eq(ResetSignal())
+
             # Check that we never write to register 0
             with m.If(reg_write_C_WB):
                 m.d.comb += Assert(rd_WB != 0)
@@ -474,6 +480,25 @@ class Misato(Elaboratable):
                       (opcode_ID != Opcode.OP_IMM) &
                       (opcode_ID != Opcode.STORE)):
                 m.d.comb += Assert(self.o_trap)
+            
+            # Check if the JAL instruction jumps to the
+            # correct address, and stores the address of
+            # the next instruction in the destination
+            # register (unless it is x0).
+            f_jal_instr = Signal()
+            m.d.comb += f_jal_instr.eq(opcode_ID == Opcode.JAL)
+
+            with m.If(Past(f_jal_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      ):
+                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                with m.Else():
+                    m.d.comb += Assert(reg_write_C_WB == 0)
 
         return m
  
