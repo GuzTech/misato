@@ -7,6 +7,8 @@ from amaranth.sim import Simulator, Settle
 from amaranth_soc.wishbone import *
 from amaranth_boards.ulx3s import *
 
+from amaranth.asserts import *
+
 from isa import *
 from decoder import Decoder
 from alu import ALU
@@ -20,10 +22,12 @@ from interconnect import Interconnect
 class Misato(Elaboratable):
     def __init__(self,
                  xlen: XLEN,
-                 with_RVFI=False):
+                 with_RVFI=False,
+                 formal=False):
         # Configuration
         self.xlen     = xlen                # Number of bits
         self.rvfi     = with_RVFI           # Enable RVFI for formal verification
+        self.formal   = formal              # Enable formal verification
 
         # Inputs
         self.i_instr  = Signal(32)          # Fetched instruction (I-mem)
@@ -449,31 +453,53 @@ class Misato(Elaboratable):
             self.o_reg.eq(out.data),
         ]
 
+        #
+        # Formal verification
+        #
+        
+
         return m
  
 
 if __name__ == "__main__":
+    formal = False
+
     top = Module()
     sync = ClockDomain()
     top.domains += sync
-    top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False)
-
-    # data = [
-    #     RV32_I(imm= 0x01, rs1=0, rd =1, funct3=Funct3.ADD),
-    #     RV32_I(imm= 0x01, rs1=1, rd =1, funct3=Funct3.SLL),
-    #     RV32_B(imm= 0x1C, rs1=1, rs2=2, funct3=Funct3.BEQ),
-    #     RV32_I(imm= 0x01, rs1=2, rd =2, funct3=Funct3.ADD),
-    #     RV32_J(imm=-0x08, rd =0, opcode=J_Instr.JAL),
-    #     0, 0, 0, 0,
-    #     RV32_J(imm=-0x24, rd =0, opcode=J_Instr.JAL),
-    # ]
+    top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
 
     data = [
-        RV32_U(imm=1, rd=1, opcode=U_Instr.LUI),
+        # Setup
+        RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),
+        RV32_I(imm= 0x01, rs1=0,        rd=3, funct3=Funct3.ADD),
+        RV32_I(imm= 0x80, rs1=0,        rd=5, funct3=Funct3.ADD),
+
+        # Left setup
+        RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
+        RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+
+        # Left
+        RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
+        RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
+        RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SLL),
+        RV32_B(imm= 0x08, rs1=2, rs2=5,       funct3=Funct3.BEQ),
+        RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+
+        # Right setup
+        RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
+        RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+
+        # Right
+        RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
+        RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
+        RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),
+        RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),
+        RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
     ]
 
     imem = Memory(width=32, depth=64, init=data)
-    top.submodules.imem_r = imem_r = imem.read_port(domain="sync")
+    top.submodules.imem_r = imem_r = imem.read_port()
 
     dmem = Memory(width=32, depth=16)
     top.submodules.dmem_r = dmem_r = dmem.read_port()
@@ -490,22 +516,23 @@ if __name__ == "__main__":
     top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
     top.d.comb += dmem_w.data.eq(cpu.o_d_data)
 
-    def bench():
-        yield sync.rst.eq(1)
-        yield
-        yield sync.rst.eq(0)
-        yield
-        assert not (yield cpu.o_trap)
-        
-        for _ in range(50):
+    if not formal:
+        def bench():
+            yield sync.rst.eq(1)
+            yield
+            yield sync.rst.eq(0)
             yield
             assert not (yield cpu.o_trap)
-        
-    sim = Simulator(top)
-    sim.add_clock(1e-6)
-    sim.add_sync_process(bench)
-    with sim.write_vcd("cpu.vcd"):
-        sim.run()
+            
+            for _ in range(50):
+                yield
+                assert not (yield cpu.o_trap)
+            
+        sim = Simulator(top)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(bench)
+        with sim.write_vcd("cpu.vcd"):
+            sim.run()
 
     with open("cpu.v", "w") as file:
         file.write(verilog.convert(cpu, ports=cpu.ports()))
