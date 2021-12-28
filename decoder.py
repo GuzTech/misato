@@ -12,7 +12,7 @@ from typing import List
 
 
 class Decoder(Elaboratable):
-    def __init__(self, xlen: XLEN, formal: bool):
+    def __init__(self, xlen: XLEN, formal=False):
         # Inputs
         self.instr  = Signal(xlen.value)
 
