@@ -17,7 +17,6 @@ class ALU(Elaboratable):
 
         # Output
         self.o_out    = Signal(xlen.value)  # ALU output
-        # self.o_zero   = Signal()            # Result is zero
 
     def ports(self) -> List[Signal]:
         return [
@@ -26,7 +25,6 @@ class ALU(Elaboratable):
             self.i_funct3,
             self.alt_func,
             self.o_out,
-            # self.o_zero
         ]
 
     def elaborate(self, platform: Platform) -> Module:
@@ -39,7 +37,8 @@ class ALU(Elaboratable):
         with m.Switch(self.i_funct3):
             with m.Case(Funct3.ADD):
                 m.d.comb += self.o_out.eq(Mux(alt_func,
-                                            self.i_in1 - self.i_in2, self.i_in1 + self.i_in2))
+                                              self.i_in1 - self.i_in2,
+                                              self.i_in1 + self.i_in2))
             with m.Case(Funct3.OR):
                 m.d.comb += self.o_out.eq(self.i_in1 | self.i_in2)
             with m.Case(Funct3.AND):
@@ -47,17 +46,16 @@ class ALU(Elaboratable):
             with m.Case(Funct3.XOR):
                 m.d.comb += self.o_out.eq(self.i_in1 ^ self.i_in2)
             with m.Case(Funct3.SLT):
-                m.d.comb += self.o_out.eq(Mux(self.i_in1.as_signed()
-                                            < self.i_in2.as_signed(), 0b1, 0b0))
+                m.d.comb += self.o_out.eq(Mux(self.i_in1.as_signed() < self.i_in2.as_signed(),
+                                              0b1, 0b0))
             with m.Case(Funct3.SLTU):
                 m.d.comb += self.o_out.eq(Mux(self.i_in1 < self.i_in2, 0b1, 0b0))
             with m.Case(Funct3.SLL):
                 m.d.comb += self.o_out.eq(self.i_in1 << self.i_in2[:5])
             with m.Case(Funct3.SR):
-                m.d.comb += self.o_out.eq(Mux(alt_func, self.i_in1.as_signed()
-                                            >> self.i_in2[:5], self.i_in1 >> self.i_in2[:5]))
-
-        # m.d.comb += self.o_zero.eq(self.o_out == 0)
+                m.d.comb += self.o_out.eq(Mux(alt_func, 
+                                              self.i_in1.as_signed() >> self.i_in2[:5],
+                                              self.i_in1 >> self.i_in2[:5]))
 
         return m
 
