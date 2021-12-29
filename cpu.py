@@ -405,10 +405,8 @@ class Misato(Elaboratable):
             m.d.comb += in1_EX.eq(in1_fwd_EX)
 
         # in2_EX selection
-        with m.If(JAL_instr_EX):
+        with m.If(JAL_instr_EX | JALR_instr_EX):
             m.d.comb += in2_EX.eq(0)
-        with m.Elif(JALR_instr_EX):
-            m.d.comb += in2_EX.eq(r1_EX)
         with m.Else():
             m.d.comb += in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX))
 
@@ -416,7 +414,7 @@ class Misato(Elaboratable):
         m.d.comb += [
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(Mux(JAL_instr_EX, Funct3.ADD, funct3_EX)),
+            alu.i_funct3.eq(Mux(JAL_instr_EX | JALR_instr_EX, Funct3.ADD, funct3_EX)),
             alu.i_funct7.eq(funct7_EX),
             alu_out_EX.eq(alu.o_out),
         ]
@@ -425,7 +423,7 @@ class Misato(Elaboratable):
         m.d.comb += [
             branch_addr_t_EX.eq(Mux(JALR_instr_EX, r1_EX, pc_EX) + imm_EX),
             branch_addr_EX[1:].eq(branch_addr_t_EX[1:]),
-            branch_addr_EX[0].eq(Mux(JALR_instr_EX, 0b0, branch_addr_t_EX[0])),
+            branch_addr_EX[0].eq(0),
             branch.in1.eq(in1_EX),
             branch.in2.eq(in2_EX),
             branch.br_insn.eq(funct3_EX),
@@ -527,6 +525,42 @@ class Misato(Elaboratable):
                       & (~Past(f_rst_sig, 4))
                       ):
                 m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+                # We have to make sure we truncate the result of the addition
+                # or else we will be comparing a 32-bit and 33-bit value, which
+                # can of course fail.
+                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+                    # of the instruction during the ID stage, so don't add
+                    # 4 to the Past(pc_IF, 3) statement since it's already
+                    # 4 higher.
+                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+                    m.d.comb += Assert(data_val_WB[0] == 0)
+                with m.Else():
+                    m.d.comb += Assert(reg_write_C_WB == 0)
+
+
+            # # Check if the JALR instruction jumps to the
+            # # correct address, and stores the address of
+            # # the next instruction in the destination
+            # # register (unless it is x0).
+            f_jalr_instr = Signal()
+            m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
+
+            with m.If(Past(f_jalr_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+                # We have to make sure we truncate the result of the addition
+                # or else we will be comparing a 32-bit and 33-bit value, which
+                # can of course fail. Also, the LSB of the addition should be 0.
+                m.d.comb += Assert(Past(branch_addr_MEM) == Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
                 m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
 
                 with m.If(rd_WB != 0):
