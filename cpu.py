@@ -272,24 +272,24 @@ class Misato(Elaboratable):
 
         m.d.comb += JALR_instr_ID.eq(opcode_ID == Opcode.JALR)
 
-        m.d.comb += decoder.instr.eq(instr_ID)
+        m.d.comb += decoder.i_instr.eq(instr_ID)
         m.d.comb += [
-            format_ID .eq(decoder.format),
-            opcode_ID .eq(decoder.opcode),
+            format_ID .eq(decoder.o_format),
+            opcode_ID .eq(decoder.o_opcode),
             r_type_ID .eq(decoder.r_type),
             i_type_ID .eq(decoder.i_type),
             s_type_ID .eq(decoder.s_type),
             u_type_ID .eq(decoder.u_type),
             b_type_ID .eq(decoder.b_type),
             j_type_ID .eq(decoder.j_type),
-            imm_ID    .eq(decoder.imm),
-            rs1_ID    .eq(decoder.rs1),
-            rs2_ID    .eq(decoder.rs2),
-            rd_ID     .eq(decoder.rd),
-            funct3_ID .eq(decoder.funct3),
-            funct7_ID .eq(decoder.funct7),
+            imm_ID    .eq(decoder.o_imm),
+            rs1_ID    .eq(decoder.o_rs1),
+            rs2_ID    .eq(decoder.o_rs2),
+            rd_ID     .eq(decoder.o_rd),
+            funct3_ID .eq(decoder.o_funct3),
+            funct7_ID .eq(decoder.o_funct7),
             u_instr_ID.eq(decoder.u_instr),
-            trap_ID   .eq(decoder.trap)
+            trap_ID   .eq(decoder.o_trap)
         ]
 
         m.d.comb += reg_write_C_ID.eq(
@@ -457,7 +457,7 @@ class Misato(Elaboratable):
         m.submodules.out = out = regfile.read_port()
 
         m.d.comb += [
-            self.o_trap.eq(decoder.trap),
+            self.o_trap.eq(decoder.o_trap),
             out.addr.eq(2),
             self.o_reg.eq(out.data),
         ]

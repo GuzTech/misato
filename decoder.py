@@ -14,25 +14,25 @@ from typing import List
 class Decoder(Elaboratable):
     def __init__(self, xlen: XLEN, formal=False):
         # Inputs
-        self.instr  = Signal(xlen.value)
+        self.i_instr  = Signal(xlen.value)
 
         # Outputs
-        self.format  = Signal(Format)
-        self.opcode  = Signal(Opcode)
-        self.r_type  = Signal()
-        self.i_type  = Signal()
-        self.u_type  = Signal()
-        self.s_type  = Signal()
-        self.b_type  = Signal()
-        self.j_type  = Signal()
-        self.imm     = Signal(xlen.value)
-        self.rs1     = Signal(5)
-        self.rs2     = Signal(5)
-        self.rd      = Signal(5)
-        self.funct3  = Signal(Funct3)
-        self.funct7  = Signal(Funct7)
-        self.u_instr = Signal(U_Type)
-        self.trap    = Signal()
+        self.o_format = Signal(Format)
+        self.o_opcode = Signal(Opcode)
+        self.r_type   = Signal()
+        self.i_type   = Signal()
+        self.u_type   = Signal()
+        self.s_type   = Signal()
+        self.b_type   = Signal()
+        self.j_type   = Signal()
+        self.o_imm    = Signal(xlen.value)
+        self.o_rs1    = Signal(5)
+        self.o_rs2    = Signal(5)
+        self.o_rd     = Signal(5)
+        self.o_funct3 = Signal(Funct3)
+        self.o_funct7 = Signal(Funct7)
+        self.u_instr  = Signal(U_Type)
+        self.o_trap   = Signal()
 
         # Config
         self.xlen    = xlen.value
@@ -40,23 +40,23 @@ class Decoder(Elaboratable):
 
     def ports(self) -> List[Signal]:
         return [
-            self.instr,
-            self.format,
-            self.opcode,
+            self.i_instr,
+            self.o_format,
+            self.o_opcode,
             self.r_type,
             self.i_type,
             self.s_type,
             self.u_type,
             self.b_type,
             self.j_type,
-            self.imm,
-            self.rs1,
-            self.rs2,
-            self.rd,
-            self.funct3,
-            self.funct7,
+            self.o_imm,
+            self.o_rs1,
+            self.o_rs2,
+            self.o_rd,
+            self.o_funct3,
+            self.o_funct7,
             self.u_instr,
-            self.trap,
+            self.o_trap,
         ]
 
     def elaborate(self, platform: Platform) -> Module:
@@ -77,26 +77,26 @@ class Decoder(Elaboratable):
 
         # Extract bit-fields from the instruction
         m.d.comb += [
-            opcode.eq(self.instr[:7]),
-            rd.eq(self.instr[7:12]),
-            rs1.eq(self.instr[15:20]),
-            rs2.eq(self.instr[20:25]),
-            funct3.eq(Mux(self.u_type, Funct3.ADD, self.instr[12:15])),
-            funct7.eq(self.instr[25:]),
-            i_imm.eq(Cat(self.instr[20:], Repl(self.instr[31], 20))),
+            opcode.eq(self.i_instr[:7]),
+            rd.eq(self.i_instr[7:12]),
+            rs1.eq(self.i_instr[15:20]),
+            rs2.eq(self.i_instr[20:25]),
+            funct3.eq(Mux(self.u_type, Funct3.ADD, self.i_instr[12:15])),
+            funct7.eq(self.i_instr[25:]),
+            i_imm.eq(Cat(self.i_instr[20:], Repl(self.i_instr[31], 20))),
             s_imm.eq(
-                Cat(self.instr[7:12], self.instr[25:], Repl(self.instr[31], 20))),
-            b_imm.eq(Cat(C(0), self.instr[8:12], self.instr[25:31],
-                         self.instr[7], self.instr[31], Repl(self.instr[31], 19))),
-            u_imm.eq(Cat(Repl(C(0), 12), self.instr[12:])),
-            j_imm.eq(Cat(C(0), self.instr[21:31], self.instr[20],
-                         self.instr[12:20], self.instr[31], Repl(self.instr[31], 11))),
-            self.rs1.eq(rs1),
-            self.rs2.eq(rs2),
-            self.rd.eq(rd),
-            self.funct3.eq(funct3),
-            self.funct7.eq(funct7),
-            self.opcode.eq(opcode),
+                Cat(self.i_instr[7:12], self.i_instr[25:], Repl(self.i_instr[31], 20))),
+            b_imm.eq(Cat(C(0), self.i_instr[8:12], self.i_instr[25:31],
+                         self.i_instr[7], self.i_instr[31], Repl(self.i_instr[31], 19))),
+            u_imm.eq(Cat(Repl(C(0), 12), self.i_instr[12:])),
+            j_imm.eq(Cat(C(0), self.i_instr[21:31], self.i_instr[20],
+                         self.i_instr[12:20], self.i_instr[31], Repl(self.i_instr[31], 11))),
+            self.o_rs1.eq(rs1),
+            self.o_rs2.eq(rs2),
+            self.o_rd.eq(rd),
+            self.o_funct3.eq(funct3),
+            self.o_funct7.eq(funct7),
+            self.o_opcode.eq(opcode),
         ]
 
         # Default values
@@ -107,56 +107,56 @@ class Decoder(Elaboratable):
             self.b_type.eq(0),
             self.u_type.eq(0),
             self.j_type.eq(0),
-            self.imm.eq(0),
-            self.trap.eq(0),
+            self.o_imm.eq(0),
+            self.o_trap.eq(0),
         ]
 
         with m.Switch(opcode):
             with m.Case(Opcode.OP):
                 m.d.comb += self.r_type.eq(1)
-                m.d.comb += self.format.eq(Format.R_type)
-                m.d.comb += self.imm.eq(0)
+                m.d.comb += self.o_format.eq(Format.R_type)
+                m.d.comb += self.o_imm.eq(0)
             with m.Case(Opcode.OP_IMM, Opcode.LOAD):
                 m.d.comb += self.i_type.eq(1)
-                m.d.comb += self.format.eq(Format.I_type)
-                m.d.comb += self.imm.eq(i_imm)
+                m.d.comb += self.o_format.eq(Format.I_type)
+                m.d.comb += self.o_imm.eq(i_imm)
             with m.Case(Opcode.STORE):
                 m.d.comb += self.s_type.eq(1)
-                m.d.comb += self.format.eq(Format.S_type)
-                m.d.comb += self.imm.eq(s_imm)
+                m.d.comb += self.o_format.eq(Format.S_type)
+                m.d.comb += self.o_imm.eq(s_imm)
             with m.Case(Opcode.LUI):
                 m.d.comb += self.u_type.eq(1)
-                m.d.comb += self.format.eq(Format.U_type)
-                m.d.comb += self.imm.eq(u_imm)
+                m.d.comb += self.o_format.eq(Format.U_type)
+                m.d.comb += self.o_imm.eq(u_imm)
                 m.d.comb += self.u_instr.eq(U_Type.LUI)
             with m.Case(Opcode.AUIPC):
                 m.d.comb += self.u_type.eq(1)
-                m.d.comb += self.format.eq(Format.U_type)
-                m.d.comb += self.imm.eq(u_imm)
+                m.d.comb += self.o_format.eq(Format.U_type)
+                m.d.comb += self.o_imm.eq(u_imm)
                 m.d.comb += self.u_instr.eq(U_Type.AUIPC)
             with m.Case(Opcode.BRANCH):
                 m.d.comb += self.b_type.eq(1)
-                m.d.comb += self.format.eq(Format.B_type)
-                m.d.comb += self.imm.eq(b_imm)
+                m.d.comb += self.o_format.eq(Format.B_type)
+                m.d.comb += self.o_imm.eq(b_imm)
             with m.Case(Opcode.JAL):
                 m.d.comb += self.j_type.eq(1)
-                m.d.comb += self.format.eq(Format.J_type)
-                m.d.comb += self.imm.eq(j_imm)
+                m.d.comb += self.o_format.eq(Format.J_type)
+                m.d.comb += self.o_imm.eq(j_imm)
             with m.Case(Opcode.JALR):
                 m.d.comb += self.j_type.eq(1)
-                m.d.comb += self.format.eq(Format.I_type)
-                m.d.comb += self.imm.eq(i_imm)
+                m.d.comb += self.o_format.eq(Format.I_type)
+                m.d.comb += self.o_imm.eq(i_imm)
             with m.Default():
                 m.d.comb += [
-                    self.format.eq(Format.Unknown_type),
+                    self.o_format.eq(Format.Unknown_type),
                     self.r_type.eq(0),
                     self.i_type.eq(0),
                     self.s_type.eq(0),
                     self.u_type.eq(0),
                     self.b_type.eq(0),
                     self.j_type.eq(0),
-                    self.imm.eq(0),
-                    self.trap.eq(1)
+                    self.o_imm.eq(0),
+                    self.o_trap.eq(1)
                 ]
         
         #
@@ -165,7 +165,7 @@ class Decoder(Elaboratable):
 
         if self.formal:
             # Check if R-type instructions are correctly decoded
-            with m.If(self.opcode == Opcode.OP):
+            with m.If(self.o_opcode == Opcode.OP):
                 m.d.comb += [
                     Assert(self.r_type == 0b1),
                     Assert(self.i_type == 0b0),
@@ -173,14 +173,14 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b0),
                     Assert(self.u_type == 0b0),
                     Assert(self.j_type == 0b0),
-                    Assert(~self.trap),
-                    Assert(self.format == Format.R_type)
+                    Assert(~self.o_trap),
+                    Assert(self.o_format == Format.R_type)
                 ]
             with m.Else():
                 m.d.comb += Assert(self.r_type == 0b0)
             
             # Check if I-type instructions are correctly decoded
-            with m.If((self.opcode == Opcode.OP_IMM) | (self.opcode == Opcode.LOAD)):
+            with m.If((self.o_opcode == Opcode.OP_IMM) | (self.o_opcode == Opcode.LOAD)):
                 m.d.comb += [
                     Assert(self.r_type == 0b0),
                     Assert(self.i_type == 0b1),
@@ -188,15 +188,15 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b0),
                     Assert(self.u_type == 0b0),
                     Assert(self.j_type == 0b0),
-                    Assert(self.imm == i_imm),
-                    Assert(~self.trap),
-                    Assert(self.format == Format.I_type)
+                    Assert(self.o_imm == i_imm),
+                    Assert(~self.o_trap),
+                    Assert(self.o_format == Format.I_type)
                 ]
             with m.Else():
                 m.d.comb += Assert(self.i_type == 0b0)
 
             # Check if S-type instructions are correctly decoded
-            with m.If(self.opcode == Opcode.STORE):
+            with m.If(self.o_opcode == Opcode.STORE):
                 m.d.comb += [
                     Assert(self.r_type == 0b0),
                     Assert(self.i_type == 0b0),
@@ -204,15 +204,15 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b0),
                     Assert(self.u_type == 0b0),
                     Assert(self.j_type == 0b0),
-                    Assert(self.imm == s_imm),
-                    Assert(~self.trap),
-                    Assert(self.format == Format.S_type)
+                    Assert(self.o_imm == s_imm),
+                    Assert(~self.o_trap),
+                    Assert(self.o_format == Format.S_type)
                 ]
             with m.Else():
                 m.d.comb += Assert(self.s_type == 0b0)
 
             # Check if B-type instructions are correctly decoded
-            with m.If(self.opcode == Opcode.BRANCH):
+            with m.If(self.o_opcode == Opcode.BRANCH):
                 m.d.comb += [
                     Assert(self.r_type == 0b0),
                     Assert(self.i_type == 0b0),
@@ -220,15 +220,15 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b1),
                     Assert(self.u_type == 0b0),
                     Assert(self.j_type == 0b0),
-                    Assert(~self.trap),
-                    Assert(self.imm == b_imm),
-                    Assert(self.format == Format.B_type)
+                    Assert(~self.o_trap),
+                    Assert(self.o_imm == b_imm),
+                    Assert(self.o_format == Format.B_type)
                 ]
             with m.Else():
                 m.d.comb += Assert(self.b_type == 0b0)
 
             # Check if U-type instructions are correctly decoded
-            with m.If((self.opcode == Opcode.LUI) | (self.opcode == Opcode.AUIPC)):
+            with m.If((self.o_opcode == Opcode.LUI) | (self.o_opcode == Opcode.AUIPC)):
                 m.d.comb += [
                     Assert(self.r_type == 0b0),
                     Assert(self.i_type == 0b0),
@@ -236,15 +236,15 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b0),
                     Assert(self.u_type == 0b1),
                     Assert(self.j_type == 0b0),
-                    Assert(~self.trap),
-                    Assert(self.imm == u_imm),
-                    Assert(self.format == Format.U_type)
+                    Assert(~self.o_trap),
+                    Assert(self.o_imm == u_imm),
+                    Assert(self.o_format == Format.U_type)
                 ]
             with m.Else():
                 m.d.comb += Assert(self.u_type == 0b0)
 
             # Check if J-type instructions are correctly decoded
-            with m.If((self.opcode == Opcode.JAL) | (self.opcode == Opcode.JALR)):
+            with m.If((self.o_opcode == Opcode.JAL) | (self.o_opcode == Opcode.JALR)):
                 m.d.comb += [
                     Assert(self.r_type == 0b0),
                     Assert(self.i_type == 0b0),
@@ -252,14 +252,14 @@ class Decoder(Elaboratable):
                     Assert(self.b_type == 0b0),
                     Assert(self.u_type == 0b0),
                     Assert(self.j_type == 0b1),
-                    Assert(~self.trap),
+                    Assert(~self.o_trap),
                 ]
-                with m.If(self.opcode == Opcode.JAL):
-                    m.d.comb += Assert(self.format == Format.J_type)
-                    m.d.comb += Assert(self.imm == j_imm)
+                with m.If(self.o_opcode == Opcode.JAL):
+                    m.d.comb += Assert(self.o_format == Format.J_type)
+                    m.d.comb += Assert(self.o_imm == j_imm)
                 with m.Else():
-                    m.d.comb += Assert(self.format == Format.I_type)
-                    m.d.comb += Assert(self.imm == i_imm)
+                    m.d.comb += Assert(self.o_format == Format.I_type)
+                    m.d.comb += Assert(self.o_imm == i_imm)
             with m.Else():
                 m.d.comb += Assert(self.j_type == 0b0)
 
@@ -273,12 +273,12 @@ if __name__ == "__main__":
 
     def bench():
         # ADDI R31 = R1 + (-1)
-        yield decoder.instr.eq(0b1111_1111_1111_00001_000_11111_0010011)
+        yield decoder.i_instr.eq(0b1111_1111_1111_00001_000_11111_0010011)
         yield Settle()
 
-        assert ((yield decoder.format) == (Format.I_type.value))
+        assert ((yield decoder.o_format) == (Format.I_type.value))
         assert (yield decoder.i_type)
-        assert not (yield decoder.trap)
+        assert not (yield decoder.o_trap)
 
         # yield decoder.instr.eq(-1)
         # yield Settle()
