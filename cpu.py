@@ -139,7 +139,6 @@ class Misato(Elaboratable):
         # Branch stall signals
         bubble_count_IF  = Signal(2)                # How many NOPs to insert
         insert_bubble_IF = Signal()                 # Insert a NOP instruction
-        pc_mod_instr_IF  = Signal()                 # PC modifying instruction
         preload_next_IF  = Signal()                 # When to preload next instruction
 
         #
@@ -167,7 +166,6 @@ class Misato(Elaboratable):
         u_instr_ID       = Signal(U_Type)           # U type instruction
         trap_ID          = Signal()                 # Illegal instruction
         pc_mod_instr_ID  = Signal()                 # PC modifying instruction
-        JAL_instr_ID     = Signal()                 # Instruction is JAL
         JALR_instr_ID    = Signal()                 # Instruction is JALR
 
         # Control signals
@@ -208,7 +206,6 @@ class Misato(Elaboratable):
         in1_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #1
         in2_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #2
         in2_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #2
-        JAL_instr_EX     = Signal()                 # Instruction is JAL
         JALR_instr_EX    = Signal()                 # Instruction is JALR
 
         #
@@ -255,14 +252,8 @@ class Misato(Elaboratable):
 
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
-        m.d.comb += self.o_i_en.eq(~pc_mod_instr_IF)
+        m.d.comb += self.o_i_en.eq(~pc_mod_instr_ID)
         m.d.comb += self.o_i_addr.eq(pc_IF)
-
-        m.d.comb += pc_mod_instr_IF.eq(
-            (self.i_instr[:7] == Opcode.BRANCH) |
-            (self.i_instr[:7] == Opcode.JAL) |
-            (self.i_instr[:7] == Opcode.JALR)
-            )
 
         with m.If(pc_mod_instr_ID):
             m.d.sync += bubble_count_IF.eq(3)
@@ -277,13 +268,8 @@ class Misato(Elaboratable):
         m.d.sync += pc_p4_ID.eq(pc_p4_IF)
         m.d.comb += instr_ID.eq(Mux(insert_bubble_IF, NOP, self.i_instr))
 
-        m.d.comb += pc_mod_instr_ID.eq(
-            (instr_ID[:7] == Opcode.BRANCH) |
-            (instr_ID[:7] == Opcode.JAL) |
-            (instr_ID[:7] == Opcode.JALR)
-            )
+        m.d.comb += pc_mod_instr_ID.eq(b_type_ID | j_type_ID)
 
-        m.d.comb += JAL_instr_ID.eq(opcode_ID == Opcode.JAL)
         m.d.comb += JALR_instr_ID.eq(opcode_ID == Opcode.JALR)
 
         m.d.comb += decoder.instr.eq(instr_ID)
@@ -310,10 +296,8 @@ class Misato(Elaboratable):
             ((opcode_ID == Opcode.LOAD) |
              (opcode_ID == Opcode.OP) |
              (opcode_ID == Opcode.OP_IMM) |
-             (opcode_ID == Opcode.LUI) |
-             (opcode_ID == Opcode.AUIPC) |
-             JAL_instr_ID |
-             (opcode_ID == Opcode.JALR)) &
+             u_type_ID |
+             j_type_ID) &
             (rd_ID != 0)
         )
         m.d.comb += mem_write_C_ID.eq(decoder.s_type)
@@ -321,8 +305,7 @@ class Misato(Elaboratable):
         m.d.comb += mem_to_reg_C_ID.eq(opcode_ID == Opcode.LOAD)
         m.d.comb += alu_source_C_ID.eq(
             (opcode_ID == Opcode.OP_IMM) |
-            (opcode_ID == Opcode.LUI) |
-            (opcode_ID == Opcode.AUIPC)
+            u_type_ID | s_type_ID
         )
 
         m.d.comb += rp1.addr.eq(rs1_ID)
@@ -352,7 +335,6 @@ class Misato(Elaboratable):
             b_type_EX.eq(b_type_ID),
             j_type_EX.eq(j_type_ID),
             u_type_EX.eq(u_type_ID),
-            JAL_instr_EX.eq(JAL_instr_ID),
             JALR_instr_EX.eq(JALR_instr_ID),
         ]
 
@@ -399,13 +381,13 @@ class Misato(Elaboratable):
                 m.d.comb += in1_EX.eq(0)
             with m.Else():
                 m.d.comb += in1_EX.eq(pc_EX)
-        with m.Elif(JAL_instr_EX | JALR_instr_EX):
+        with m.Elif(j_type_EX):
             m.d.comb += in1_EX.eq(pc_p4_EX)
         with m.Else():
             m.d.comb += in1_EX.eq(in1_fwd_EX)
 
         # in2_EX selection
-        with m.If(JAL_instr_EX | JALR_instr_EX):
+        with m.If(j_type_EX):
             m.d.comb += in2_EX.eq(0)
         with m.Else():
             m.d.comb += in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX))
@@ -414,7 +396,7 @@ class Misato(Elaboratable):
         m.d.comb += [
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(Mux(JAL_instr_EX | JALR_instr_EX, Funct3.ADD, funct3_EX)),
+            alu.i_funct3.eq(Mux(j_type_EX, Funct3.ADD, funct3_EX)),
             alu.i_funct7.eq(Mux(u_type_EX, 0, funct7_EX)),
             alu_out_EX.eq(alu.o_out),
         ]
@@ -591,6 +573,7 @@ class Misato(Elaboratable):
                     m.d.comb += Assert(reg_write_C_WB)
                     m.d.comb += Assert(data_val_WB[12:] == (Past(imm_ID, 3)[12:]))
                     m.d.comb += Assert(data_val_WB[:12] == 0)
+
         return m
  
 
