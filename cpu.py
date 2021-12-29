@@ -415,7 +415,7 @@ class Misato(Elaboratable):
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
             alu.i_funct3.eq(Mux(JAL_instr_EX | JALR_instr_EX, Funct3.ADD, funct3_EX)),
-            alu.i_funct7.eq(funct7_EX),
+            alu.i_funct7.eq(Mux(u_type_EX, 0, funct7_EX)),
             alu_out_EX.eq(alu.o_out),
         ]
 
@@ -543,10 +543,10 @@ class Misato(Elaboratable):
                     m.d.comb += Assert(reg_write_C_WB == 0)
 
 
-            # # Check if the JALR instruction jumps to the
-            # # correct address, and stores the address of
-            # # the next instruction in the destination
-            # # register (unless it is x0).
+            # Check if the JALR instruction jumps to the
+            # correct address, and stores the address of
+            # the next instruction in the destination
+            # register (unless it is x0).
             f_jalr_instr = Signal()
             m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
 
@@ -560,7 +560,8 @@ class Misato(Elaboratable):
                 # We have to make sure we truncate the result of the addition
                 # or else we will be comparing a 32-bit and 33-bit value, which
                 # can of course fail. Also, the LSB of the addition should be 0.
-                m.d.comb += Assert(Past(branch_addr_MEM) == Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
+                m.d.comb += Assert(Past(branch_addr_MEM) == 
+                                   Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
                 m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
 
                 with m.If(rd_WB != 0):
@@ -574,6 +575,22 @@ class Misato(Elaboratable):
                 with m.Else():
                     m.d.comb += Assert(reg_write_C_WB == 0)
 
+            # Check if the LUI instruction loads the U-type
+            # immediate in the upper 20 bits of the destination
+            # register and sets the lower 12 bits to zero.
+            f_lui_instr = Signal()
+            m.d.comb += f_lui_instr.eq(opcode_ID == Opcode.LUI)
+
+            with m.If(Past(f_lui_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                    m.d.comb += Assert(data_val_WB[12:] == (Past(imm_ID, 3)[12:]))
+                    m.d.comb += Assert(data_val_WB[:12] == 0)
         return m
  
 
