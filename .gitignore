@@ -6,3 +6,4 @@ programs/hex.bin
 *_bmc
 *_prove
 *.vcd
+*.il
