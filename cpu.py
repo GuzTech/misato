@@ -151,22 +151,26 @@ class Misato(Elaboratable):
         # Instruction decoder signals
         format_ID        = Signal(Format)           # Instruction format
         opcode_ID        = Signal(Opcode)           # Instruction opcode
-        r_type_ID        = Signal()                 # R type instruction
-        i_type_ID        = Signal()                 # I type instruction
-        u_type_ID        = Signal()                 # U type instruction
-        s_type_ID        = Signal()                 # S type instruction
-        b_type_ID        = Signal()                 # B type instruction
-        j_type_ID        = Signal()                 # J type instruction
+        LOAD_ID          = Signal()                 # LOAD instruction
+        STORE_ID         = Signal()                 # STORE instruction
+        BRANCH_ID        = Signal()                 # BRANCH instruction
+        JALR_ID          = Signal()                 # JALR instruction
+        JAL_ID           = Signal()                 # JAL instruction
+        OP_IMM_ID        = Signal()                 # OP_IMM instruction
+        OP_ID            = Signal()                 # OP instruction
+        SYSTEM_ID        = Signal()                 # SYSTEM instruction
+        AUIPC_ID         = Signal()                 # AUIPC instruction
+        LUI_ID           = Signal()                 # LUI instruction
+        jump_ID          = Signal()                 # Jump instruction
+        u_instr_ID       = Signal()                 # U-type instruction
         imm_ID           = Signal(self.xlen.value)  # Immediate value
         rs1_ID           = Signal(5)                # Source register #1
         rs2_ID           = Signal(5)                # Source register #2
         rd_ID            = Signal(5)                # Destination register
         funct3_ID        = Signal(Funct3)           # Funct3 field
         funct7_ID        = Signal(Funct7)           # Funct7 field
-        u_instr_ID       = Signal(U_Type)           # U type instruction
         trap_ID          = Signal()                 # Illegal instruction
         pc_mod_instr_ID  = Signal()                 # PC modifying instruction
-        JALR_instr_ID    = Signal()                 # Instruction is JALR
 
         # Control signals
         pc_source_C_ID   = Signal()                 # pc_next source selector
@@ -193,20 +197,20 @@ class Misato(Elaboratable):
         branch_addr_EX   = Signal(self.xlen.value)  # Branch address
         branch_addr_t_EX = Signal(self.xlen.value)  # Temporary branch address
         alu_out_EX       = Signal(self.xlen.value)  # ALU output
-        zero_EX          = Signal()                 # ALU result is zero
         reg_write_C_EX   = Signal()                 # Write to register file
         mem_to_reg_C_EX  = Signal()                 # Mem or ALU result to register
         mem_read_C_EX    = Signal()                 # Read from data memory
         mem_write_C_EX   = Signal()                 # Write to data memory
         alu_source_C_EX  = Signal()                 # ALU input #2 source
-        b_type_EX        = Signal()                 # B type instruction
-        j_type_EX        = Signal()                 # J type instruction
-        u_type_EX        = Signal()                 # U type instruction
+        BRANCH_EX        = Signal()                 # BRANCH instruction
+        JALR_EX          = Signal()                 # JALR instruction
+        LUI_EX           = Signal()                 # LUI instruction
+        jump_EX          = Signal()                 # Jump instruction
+        u_instr_EX       = Signal()                 # U-type instruction
         in1_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #1
         in1_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #1
         in2_fwd_EX       = Signal(self.xlen.value)  # EX stage ALU/BR fowarded value #2
         in2_EX           = Signal(self.xlen.value)  # EX stage ALU/BR value #2
-        JALR_instr_EX    = Signal()                 # Instruction is JALR
 
         #
         #  Memory stage signals (MEM)
@@ -268,45 +272,41 @@ class Misato(Elaboratable):
         m.d.sync += pc_p4_ID.eq(pc_p4_IF)
         m.d.comb += instr_ID.eq(Mux(insert_bubble_IF, NOP, self.i_instr))
 
-        m.d.comb += pc_mod_instr_ID.eq(b_type_ID | j_type_ID)
+        m.d.comb += pc_mod_instr_ID.eq(BRANCH_ID | jump_ID)
 
-        m.d.comb += JALR_instr_ID.eq(opcode_ID == Opcode.JALR)
+        m.d.comb += JALR_ID.eq(opcode_ID == Opcode.JALR)
 
         m.d.comb += decoder.i_instr.eq(instr_ID)
         m.d.comb += [
             format_ID .eq(decoder.o_format),
             opcode_ID .eq(decoder.o_opcode),
-            r_type_ID .eq(decoder.r_type),
-            i_type_ID .eq(decoder.i_type),
-            s_type_ID .eq(decoder.s_type),
-            u_type_ID .eq(decoder.u_type),
-            b_type_ID .eq(decoder.b_type),
-            j_type_ID .eq(decoder.j_type),
+            LOAD_ID   .eq(decoder.o_LOAD),
+            STORE_ID  .eq(decoder.o_STORE),
+            BRANCH_ID .eq(decoder.o_BRANCH),
+            JALR_ID   .eq(decoder.o_JALR),
+            JAL_ID    .eq(decoder.o_JAL),
+            OP_IMM_ID .eq(decoder.o_OP_IMM),
+            OP_ID     .eq(decoder.o_OP),
+            SYSTEM_ID .eq(decoder.o_SYSTEM),
+            AUIPC_ID  .eq(decoder.o_AUIPC),
+            LUI_ID    .eq(decoder.o_LUI),
+            jump_ID   .eq(decoder.o_jump),
             imm_ID    .eq(decoder.o_imm),
             rs1_ID    .eq(decoder.o_rs1),
             rs2_ID    .eq(decoder.o_rs2),
             rd_ID     .eq(decoder.o_rd),
             funct3_ID .eq(decoder.o_funct3),
             funct7_ID .eq(decoder.o_funct7),
-            u_instr_ID.eq(decoder.u_instr),
+            u_instr_ID.eq(decoder.o_u_instr),
             trap_ID   .eq(decoder.o_trap)
         ]
 
         m.d.comb += reg_write_C_ID.eq(
-            ((opcode_ID == Opcode.LOAD) |
-             (opcode_ID == Opcode.OP) |
-             (opcode_ID == Opcode.OP_IMM) |
-             u_type_ID |
-             j_type_ID) &
-            (rd_ID != 0)
-        )
-        m.d.comb += mem_write_C_ID.eq(decoder.s_type)
-        m.d.comb += mem_read_C_ID.eq(opcode_ID == Opcode.LOAD)
-        m.d.comb += mem_to_reg_C_ID.eq(opcode_ID == Opcode.LOAD)
-        m.d.comb += alu_source_C_ID.eq(
-            (opcode_ID == Opcode.OP_IMM) |
-            u_type_ID | s_type_ID
-        )
+            (LOAD_ID | OP_ID | OP_IMM_ID | u_instr_ID | jump_ID) & (rd_ID != 0))
+        m.d.comb += mem_write_C_ID.eq(STORE_ID)
+        m.d.comb += mem_read_C_ID.eq(LOAD_ID)
+        m.d.comb += mem_to_reg_C_ID.eq(LOAD_ID)
+        m.d.comb += alu_source_C_ID.eq(OP_IMM_ID | u_instr_ID | STORE_ID)
 
         m.d.comb += rp1.addr.eq(rs1_ID)
         m.d.comb += rp2.addr.eq(rs2_ID)
@@ -332,10 +332,11 @@ class Misato(Elaboratable):
             alu_source_C_EX.eq(alu_source_C_ID),
             mem_read_C_EX.eq(mem_read_C_ID),
             mem_write_C_EX.eq(mem_write_C_ID),
-            b_type_EX.eq(b_type_ID),
-            j_type_EX.eq(j_type_ID),
-            u_type_EX.eq(u_type_ID),
-            JALR_instr_EX.eq(JALR_instr_ID),
+            BRANCH_EX.eq(BRANCH_ID),
+            JALR_EX.eq(JALR_ID),
+            LUI_EX.eq(LUI_ID),
+            u_instr_EX.eq(u_instr_ID),
+            jump_EX.eq(jump_ID),
         ]
 
         # Register file output is already registered,
@@ -376,18 +377,18 @@ class Misato(Elaboratable):
                 m.d.comb += in2_fwd_EX.eq(0)
 
         # in1_EX selection
-        with m.If(u_type_EX):
-            with m.If(opcode_EX == Opcode.LUI):
+        with m.If(u_instr_EX):
+            with m.If(LUI_EX):
                 m.d.comb += in1_EX.eq(0)
             with m.Else():
                 m.d.comb += in1_EX.eq(pc_EX)
-        with m.Elif(j_type_EX):
+        with m.Elif(jump_EX):
             m.d.comb += in1_EX.eq(pc_p4_EX)
         with m.Else():
             m.d.comb += in1_EX.eq(in1_fwd_EX)
 
         # in2_EX selection
-        with m.If(j_type_EX):
+        with m.If(jump_EX):
             m.d.comb += in2_EX.eq(0)
         with m.Else():
             m.d.comb += in2_EX.eq(Mux(alu_source_C_EX, imm_EX, in2_fwd_EX))
@@ -396,14 +397,14 @@ class Misato(Elaboratable):
         m.d.comb += [
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(Mux(j_type_EX, Funct3.ADD, funct3_EX)),
-            alu.i_funct7.eq(Mux(u_type_EX, 0, funct7_EX)),
+            alu.i_funct3.eq(Mux(jump_EX, Funct3.ADD, funct3_EX)),
+            alu.i_funct7.eq(Mux(u_instr_EX, 0, funct7_EX)),
             alu_out_EX.eq(alu.o_out),
         ]
 
         # Branch unit signals
         m.d.comb += [
-            branch_addr_t_EX.eq(Mux(JALR_instr_EX, r1_EX, pc_EX) + imm_EX),
+            branch_addr_t_EX.eq(Mux(JALR_EX, r1_EX, pc_EX) + imm_EX),
             branch_addr_EX[1:].eq(branch_addr_t_EX[1:]),
             branch_addr_EX[0].eq(0),
             branch.in1.eq(in1_EX),
@@ -421,8 +422,8 @@ class Misato(Elaboratable):
             alu_out_MEM.eq(alu_out_EX),
             reg_write_C_MEM.eq(reg_write_C_EX),
             mem_to_reg_C_MEM.eq(mem_to_reg_C_EX),
-            b_type_MEM.eq(b_type_EX),
-            j_type_MEM.eq(j_type_EX),
+            b_type_MEM.eq(BRANCH_EX),
+            j_type_MEM.eq(jump_EX),
             take_branch_MEM.eq(branch.take_branch),
             mem_read_C_MEM.eq(mem_read_C_EX),
             mem_write_C_MEM.eq(mem_write_C_EX),
@@ -482,15 +483,16 @@ class Misato(Elaboratable):
             # Check that we always assert the trap signal
             # in the next clock cycle whenever we encounter
             # an instruction that we cannot decode properly.
-            with m.If((opcode_ID != Opcode.JAL) &
-                      (opcode_ID != Opcode.JALR) &
+            with m.If((opcode_ID != Opcode.LOAD) &
+                      (opcode_ID != Opcode.STORE) &
                       (opcode_ID != Opcode.BRANCH) &
-                      (opcode_ID != Opcode.LOAD) &
-                      (opcode_ID != Opcode.LUI) &
-                      (opcode_ID != Opcode.AUIPC) &
-                      (opcode_ID != Opcode.OP) &
+                      (opcode_ID != Opcode.JALR) &
+                      (opcode_ID != Opcode.JAL) &
                       (opcode_ID != Opcode.OP_IMM) &
-                      (opcode_ID != Opcode.STORE)):
+                      (opcode_ID != Opcode.OP) &
+                      (opcode_ID != Opcode.SYSTEM) &
+                      (opcode_ID != Opcode.AUIPC) &
+                      (opcode_ID != Opcode.LUI)):
                 m.d.comb += Assert(self.o_trap)
             
             # Check if the JAL instruction jumps to the
@@ -644,16 +646,16 @@ if __name__ == "__main__":
             for _ in range(50):
                 yield
                 assert not (yield cpu.o_trap)
-            
+
         sim = Simulator(top)
         sim.add_clock(1e-6)
         sim.add_sync_process(bench)
         with sim.write_vcd("cpu.vcd"):
             sim.run()
 
-    parser = main_parser()
-    args = parser.parse_args()
-    main_runner(parser, args, top, ports=cpu.ports() + [sync.clk, sync.rst])
-
-    # with open("cpu.v", "w") as file:
-    #     file.write(verilog.convert(cpu, ports=cpu.ports()))
+        with open("cpu.v", "w") as file:
+            file.write(verilog.convert(cpu, ports=cpu.ports()))
+    else:
+        parser = main_parser()
+        args = parser.parse_args()
+        main_runner(parser, args, top, ports=cpu.ports() + [sync.clk, sync.rst])
