@@ -738,7 +738,7 @@ class Misato(Elaboratable):
                     with m.Elif(Past(funct3_ID, 3) == Funct3.AND):
                         m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) & Past(imm_ID, 3))[:32])
                     with m.Elif(Past(funct3_ID, 3) == Funct3.SLL):
-                        m.d.comb += Assert(data_val_WB == 
+                        m.d.comb += Assert(data_val_WB ==
                                            (Past(in1_EX, 2) << Past(imm_ID, 3)[:5])[:32])
                     with m.Elif(Past(funct3_ID, 3) == Funct3.SR):
                         with m.If(Past(funct7_ID, 3) == Funct7.SRL):
@@ -747,6 +747,57 @@ class Misato(Elaboratable):
                         with m.Elif(Past(funct7_ID, 3) == Funct7.SRA):
                             m.d.comb += Assert(data_val_WB ==
                                                (Past(in1_EX, 2).as_signed() >> Past(imm_ID, 3)[:5])[:32])
+                with m.Else():
+                    m.d.comb += Assert(~reg_write_C_WB)
+
+            # Check if the OP-IMM instructions perform the correct
+            # ALU operations and store the results in the correct
+            # destination register.
+            f_op_instr = Signal()
+            m.d.comb += f_op_instr.eq(opcode_ID == Opcode.OP)
+
+            with m.If(Past(f_op_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+
+                    # Make sure to use in1_EX because a previous instruction
+                    # might not have written to rs1, so use the forwarded value.
+                    with m.If(Past(funct3_ID, 3) == Funct3.ADD):
+                        with m.If(Past(funct7_ID, 3) == Funct7.ADD):
+                            m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) + Past(in2_EX, 2))[:32])
+                        with m.Elif(Past(funct7_ID, 3) == Funct7.SUB):
+                            m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) - Past(in2_EX, 2))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLT):
+                        m.d.comb += Assert(data_val_WB == Mux(
+                            Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed(),
+                            Cat(0b1, Repl(0b0, 31)),
+                            Repl(0b0, 32)))
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLTU):
+                        m.d.comb += Assert(data_val_WB == Mux(
+                            Past(in1_EX, 2) < Past(in2_EX, 2),
+                            Cat(0b1, Repl(0b0, 31)),
+                            Repl(0b0, 32)))
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.XOR):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) ^ Past(in2_EX, 2))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.OR):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) | Past(in2_EX, 2))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.AND):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) & Past(in2_EX, 2))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLL):
+                        m.d.comb += Assert(data_val_WB ==
+                                           (Past(in1_EX, 2) << Past(in2_EX, 2)[:5])[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SR):
+                        with m.If(Past(funct7_ID, 3) == Funct7.SRL):
+                            m.d.comb += Assert(data_val_WB ==
+                                               (Past(in1_EX, 2) >> Past(in2_EX, 2)[:5])[:32])
+                        with m.Elif(Past(funct7_ID, 3) == Funct7.SRA):
+                            m.d.comb += Assert(data_val_WB ==
+                                               (Past(in1_EX, 2).as_signed() >> Past(in2_EX, 2)[:5])[:32])
                 with m.Else():
                     m.d.comb += Assert(~reg_write_C_WB)
 
