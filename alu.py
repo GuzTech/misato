@@ -10,10 +10,12 @@ from typing import List
 class ALU(Elaboratable):
     def __init__(self, xlen: XLEN):
         # Inputs
-        self.i_in1    = Signal(xlen.value)  # ALU input #1
-        self.i_in2    = Signal(xlen.value)  # ALU input #2
-        self.i_funct3 = Signal(Funct3)      # Funct3 field
-        self.i_funct7 = Signal(Funct7)      # Funct7 field
+        self.i_in1    = Signal(xlen.value) # ALU input #1
+        self.i_in2    = Signal(xlen.value) # ALU input #2
+        self.i_funct3 = Signal(Funct3)     # Funct3 field
+        self.i_funct7 = Signal(Funct7)     # Funct7 field
+        self.i_op_imm = Signal()           # OP-IMM instruction type
+        self.i_op     = Signal()           # OP instruction type
 
         # Output
         self.o_out    = Signal(xlen.value)  # ALU output
@@ -23,7 +25,9 @@ class ALU(Elaboratable):
             self.i_in1,
             self.i_in2,
             self.i_funct3,
-            self.alt_func,
+            self.i_funct7,
+            self.i_op_imm,
+            self.i_op,
             self.o_out,
         ]
 
@@ -36,7 +40,8 @@ class ALU(Elaboratable):
 
         with m.Switch(self.i_funct3):
             with m.Case(Funct3.ADD):
-                m.d.comb += self.o_out.eq(Mux(alt_func,
+                # Funct7 is only valid if the instruction type is OP
+                m.d.comb += self.o_out.eq(Mux(alt_func & self.i_op,
                                               self.i_in1 - self.i_in2,
                                               self.i_in1 + self.i_in2))
             with m.Case(Funct3.OR):
@@ -53,7 +58,8 @@ class ALU(Elaboratable):
             with m.Case(Funct3.SLL):
                 m.d.comb += self.o_out.eq(self.i_in1 << self.i_in2[:5])
             with m.Case(Funct3.SR):
-                m.d.comb += self.o_out.eq(Mux(alt_func, 
+                # Funct7 is only valid if instruction type is OP or OP-IMM
+                m.d.comb += self.o_out.eq(Mux(alt_func & (self.i_op | self.i_op_imm), 
                                               self.i_in1.as_signed() >> self.i_in2[:5],
                                               self.i_in1 >> self.i_in2[:5]))
 

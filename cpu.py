@@ -206,6 +206,8 @@ class Misato(Elaboratable):
         STORE_EX         = Signal()                 # STORE instruction
         BRANCH_EX        = Signal()                 # BRANCH instruction
         JALR_EX          = Signal()                 # JALR instruction
+        OP_IMM_EX        = Signal()                 # OP_IMM instruction
+        OP_EX            = Signal()                 # OP instruction
         LUI_EX           = Signal()                 # LUI instruction
         jump_EX          = Signal()                 # Jump instruction
         u_instr_EX       = Signal()                 # U-type instruction
@@ -221,7 +223,7 @@ class Misato(Elaboratable):
         rd_MEM           = Signal(5)                # Destination register
         funct3_MEM       = Signal(Funct3)           # Funct3 field
         branch_addr_MEM  = Signal(self.xlen.value)  # Branch address
-        data_MEM         = Signal(self.xlen.value)  # Data value read from data memory
+        data_out_MEM     = Signal(self.xlen.value)  # Data value read from data memory
         alu_out_MEM      = Signal(self.xlen.value)  # ALU output
         zero_MEM         = Signal()                 # ALU result is zero
         take_branch_MEM  = Signal()                 # Branch unit output
@@ -240,7 +242,7 @@ class Misato(Elaboratable):
         # Write-back stage signals (WB)
         #
         rd_WB            = Signal(5)                # Destination register
-        data_WB          = Signal(self.xlen.value)  # Data value to be written to the register file
+        data_in_WB       = Signal(self.xlen.value)  # Data value to be written to the register file
         alu_out_WB       = Signal(self.xlen.value)  # ALU output
         data_val_WB      = Signal(self.xlen.value)  # WB stage data value
         reg_write_C_WB   = Signal()                 # Write to register file
@@ -340,6 +342,8 @@ class Misato(Elaboratable):
             STORE_EX.eq(STORE_ID),
             BRANCH_EX.eq(BRANCH_ID),
             JALR_EX.eq(JALR_ID),
+            OP_IMM_EX.eq(OP_IMM_ID),
+            OP_EX.eq(OP_ID),
             LUI_EX.eq(LUI_ID),
             u_instr_EX.eq(u_instr_ID),
             jump_EX.eq(jump_ID),
@@ -404,7 +408,9 @@ class Misato(Elaboratable):
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
             alu.i_funct3.eq(Mux(jump_EX | LOAD_EX | STORE_EX, Funct3.ADD, funct3_EX)),
-            alu.i_funct7.eq(Mux(u_instr_EX | LOAD_EX | STORE_EX, 0, funct7_EX)),
+            alu.i_funct7.eq(funct7_EX),
+            alu.i_op_imm.eq(OP_IMM_EX),
+            alu.i_op.eq(OP_EX),
             alu_out_EX.eq(alu.o_out),
         ]
 
@@ -422,8 +428,7 @@ class Misato(Elaboratable):
         # Memory stage (MEM)
         #
         m.d.sync += [
-            # r2_MEM.eq(r2_EX),
-            r2_MEM.eq(in2_EX),
+            data_out_MEM.eq(in2_fwd_EX),
             rd_MEM.eq(rd_EX),
             funct3_MEM.eq(funct3_EX),
             branch_addr_MEM.eq(branch_addr_EX),
@@ -440,16 +445,15 @@ class Misato(Elaboratable):
 
         m.d.comb += self.o_d_addr.eq(alu_out_MEM)
         # Send word, lower half-word or lowest byte to data memory
-        m.d.comb += self.o_d_data[:8].eq(r2_MEM[:8])
+        m.d.comb += self.o_d_data[:8].eq(data_out_MEM[:8])
         with m.If(STORE_MEM):
             with m.If(funct3_MEM == 0b010):
-                m.d.comb += self.o_d_data[8:].eq(r2_MEM[8:])
+                m.d.comb += self.o_d_data[8:].eq(data_out_MEM[8:])
             with m.Elif(funct3_MEM == 0b001):
-                m.d.comb += self.o_d_data[8:].eq(Cat(r2_MEM[8:16], Repl(0b0, 16)))
+                m.d.comb += self.o_d_data[8:].eq(Cat(data_out_MEM[8:16], Repl(0b0, 16)))
             with m.Elif(funct3_MEM == 0b000):
                 m.d.comb += self.o_d_data[8:].eq(Repl(0b0, 24))
 
-        m.d.comb += data_MEM.eq(self.i_data)
         m.d.comb += self.o_d_Rd.eq(mem_read_C_MEM)
         m.d.comb += self.o_d_Wr.eq(mem_write_C_MEM)
 
@@ -462,13 +466,13 @@ class Misato(Elaboratable):
         #
         m.d.sync += [
             rd_WB.eq(rd_MEM),
-            data_WB.eq(data_MEM),
+            data_in_WB.eq(self.i_data),
             alu_out_WB.eq(alu_out_MEM),
             reg_write_C_WB.eq(reg_write_C_MEM),
             mem_to_reg_C_WB.eq(mem_to_reg_C_MEM),
         ]
 
-        m.d.comb += data_val_WB.eq(Mux(mem_to_reg_C_WB, data_WB, alu_out_WB))
+        m.d.comb += data_val_WB.eq(Mux(mem_to_reg_C_WB, data_in_WB, alu_out_WB))
 
         #
         # Connections to the ports of the CPU
@@ -608,30 +612,72 @@ class Misato(Elaboratable):
                 m.d.comb += Assert(~mem_read_C_MEM)
 
                 # Check if the address calculation is correct
+                m.d.comb += Assert(alu_out_MEM == (Past(in1_EX) + Past(imm_EX))[:32])
+                m.d.comb += Assert(self.o_d_addr == alu_out_MEM)
 
-                # If there was no forwarding
-                with m.If(Past(fwd.o_fwdA) == 0b00):
-                    m.d.comb += Assert(alu_out_MEM == (Past(r1_EX) + Past(imm_EX))[:32])
-                # If there was forwarding
-                with m.Else():
-                    # Forwarded value comes from the WB stage
-                    with m.If(Past(fwd.o_fwdA) == 0b01):
-                        m.d.comb += Assert(alu_out_MEM == (Past(data_val_WB) + Past(imm_EX))[:32])
-                    # Forwarded value comes from the MEM stage
-                    with m.Else():
-                        m.d.comb += Assert(alu_out_MEM == (Past(alu_out_MEM) + Past(imm_EX))[:32])
-
-                # Check if the correct source register is used
+                # Check if the correct source register is used. The source
+                # register is always in2_fwd_EX because STORE instructions
+                # have three inputs (imm, r1 and r2), and the ALU is
+                # calculating d_addr = r1 + imm, and only in2_fwd_EX has
+                # the correct value of r2.
 
                 # If the instruction was SW
                 with m.If(Past(funct3_ID, 2) == 0b010):
-                    m.d.comb += Assert(self.o_d_data == Past(in2_EX))
+                    m.d.comb += Assert(self.o_d_data == Past(in2_fwd_EX))
                 # If the instruction was SH
                 with m.Elif(Past(funct3_ID, 2) == 0b001):
-                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_EX)[:16], Repl(0b0, 16)))
+                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_fwd_EX)[:16], Repl(0b0, 16)))
                 # If the instruction was SB
                 with m.Elif(Past(funct3_ID, 2) == 0b000):
-                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_EX)[:8], Repl(0, 24)))
+                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_fwd_EX)[:8], Repl(0, 24)))
+
+            # Check if the OP-IMM instructions perform the correct
+            # ALU operations and store the results in the correct
+            # destination register.
+            f_op_imm_instr = Signal()
+            m.d.comb += f_op_imm_instr.eq(opcode_ID == Opcode.OP_IMM)
+
+            with m.If(Past(f_op_imm_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+
+                    # Make sure to use in1_EX because a previous instruction
+                    # might not have written to rs1, so use the forwarded value.
+                    with m.If(Past(funct3_ID, 3) == Funct3.ADD):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) + Past(imm_ID, 3))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLT):
+                        m.d.comb += Assert(data_val_WB == Mux(
+                            Past(in1_EX, 2).as_signed() < Past(imm_ID, 3).as_signed(),
+                            Cat(0b1, Repl(0b0, 31)),
+                            Repl(0b0, 32)))
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLTU):
+                        m.d.comb += Assert(data_val_WB == Mux(
+                            Past(in1_EX, 2) < Past(imm_ID, 3),
+                            Cat(0b1, Repl(0b0, 31)),
+                            Repl(0b0, 32)))
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.XOR):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) ^ Past(imm_ID, 3))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.OR):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) | Past(imm_ID, 3))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.AND):
+                        m.d.comb += Assert(data_val_WB == (Past(in1_EX, 2) & Past(imm_ID, 3))[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SLL):
+                        m.d.comb += Assert(data_val_WB == 
+                                           (Past(in1_EX, 2) << Past(imm_ID, 3)[:5])[:32])
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.SR):
+                        with m.If(Past(funct7_ID, 3) == Funct7.SRL):
+                            m.d.comb += Assert(data_val_WB ==
+                                               (Past(in1_EX, 2) >> Past(imm_ID, 3)[:5])[:32])
+                        with m.Elif(Past(funct7_ID, 3) == Funct7.SRA):
+                            m.d.comb += Assert(data_val_WB ==
+                                               (Past(in1_EX, 2).as_signed() >> Past(imm_ID, 3)[:5])[:32])
+                with m.Else():
+                    m.d.comb += Assert(~reg_write_C_WB)
 
         return m
  
@@ -677,7 +723,12 @@ if __name__ == "__main__":
 
         data = [
             RV32_I(imm=-1, rs1=0,        rd=1, funct3=Funct3.ADD),
-            RV32_S(imm= 8, rs1=0, rs2=1,       funct3=Funct3.W),
+            RV32_I(imm= 2, rs1=0,        rd=2, funct3=Funct3.ADD),
+            RV32_I(imm= 3, rs1=0,        rd=3, funct3=Funct3.ADD),
+            RV32_I(imm= 4, rs1=0,        rd=4, funct3=Funct3.ADD),
+            RV32_I(imm= 5, rs1=0,        rd=5, funct3=Funct3.ADD),
+            RV32_I(imm= 6, rs1=0,        rd=6, funct3=Funct3.ADD),
+            RV32_S(imm= 4, rs1=0, rs2=1,       funct3=Funct3.W),
             RV32_J(imm=-8,               rd=0, opcode=Opcode.JAL),
         ]
 
@@ -716,8 +767,8 @@ if __name__ == "__main__":
         with sim.write_vcd("cpu.vcd"):
             sim.run()
 
-        with open("cpu.v", "w") as file:
-            file.write(verilog.convert(cpu, ports=cpu.ports()))
+        # with open("cpu.v", "w") as file:
+        #     file.write(verilog.convert(cpu, ports=cpu.ports()))
     else:
         parser = main_parser()
         args = parser.parse_args()
