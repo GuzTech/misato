@@ -202,6 +202,8 @@ class Misato(Elaboratable):
         mem_read_C_EX    = Signal()                 # Read from data memory
         mem_write_C_EX   = Signal()                 # Write to data memory
         alu_source_C_EX  = Signal()                 # ALU input #2 source
+        LOAD_EX          = Signal()                 # LOAD instruction
+        STORE_EX         = Signal()                 # STORE instruction
         BRANCH_EX        = Signal()                 # BRANCH instruction
         JALR_EX          = Signal()                 # JALR instruction
         LUI_EX           = Signal()                 # LUI instruction
@@ -217,6 +219,7 @@ class Misato(Elaboratable):
         #
         r2_MEM           = Signal(self.xlen.value)  # Source register #2 value
         rd_MEM           = Signal(5)                # Destination register
+        funct3_MEM       = Signal(Funct3)           # Funct3 field
         branch_addr_MEM  = Signal(self.xlen.value)  # Branch address
         data_MEM         = Signal(self.xlen.value)  # Data value read from data memory
         alu_out_MEM      = Signal(self.xlen.value)  # ALU output
@@ -227,8 +230,9 @@ class Misato(Elaboratable):
         mem_to_reg_C_MEM = Signal()                 # Mem or ALU result to register
         mem_read_C_MEM   = Signal()                 # Read from data memory
         mem_write_C_MEM  = Signal()                 # Write to data memory
-        b_type_MEM       = Signal()                 # B type instruction
-        j_type_MEM       = Signal()                 # J type instruction
+        STORE_MEM        = Signal()                 # STORE instruction
+        BRANCH_MEM       = Signal()                 # B type instruction
+        jump_MEM         = Signal()                 # J type instruction
         valid_branch_MEM = Signal()                 # Take the branch
         valid_jump_MEM   = Signal()                 # Take the jump
 
@@ -332,6 +336,8 @@ class Misato(Elaboratable):
             alu_source_C_EX.eq(alu_source_C_ID),
             mem_read_C_EX.eq(mem_read_C_ID),
             mem_write_C_EX.eq(mem_write_C_ID),
+            LOAD_EX.eq(LOAD_ID),
+            STORE_EX.eq(STORE_ID),
             BRANCH_EX.eq(BRANCH_ID),
             JALR_EX.eq(JALR_ID),
             LUI_EX.eq(LUI_ID),
@@ -397,8 +403,8 @@ class Misato(Elaboratable):
         m.d.comb += [
             alu.i_in1.eq(in1_EX),
             alu.i_in2.eq(in2_EX),
-            alu.i_funct3.eq(Mux(jump_EX, Funct3.ADD, funct3_EX)),
-            alu.i_funct7.eq(Mux(u_instr_EX, 0, funct7_EX)),
+            alu.i_funct3.eq(Mux(jump_EX | LOAD_EX | STORE_EX, Funct3.ADD, funct3_EX)),
+            alu.i_funct7.eq(Mux(u_instr_EX | LOAD_EX | STORE_EX, 0, funct7_EX)),
             alu_out_EX.eq(alu.o_out),
         ]
 
@@ -416,27 +422,39 @@ class Misato(Elaboratable):
         # Memory stage (MEM)
         #
         m.d.sync += [
-            r2_MEM.eq(r2_EX),
+            # r2_MEM.eq(r2_EX),
+            r2_MEM.eq(in2_EX),
             rd_MEM.eq(rd_EX),
+            funct3_MEM.eq(funct3_EX),
             branch_addr_MEM.eq(branch_addr_EX),
             alu_out_MEM.eq(alu_out_EX),
             reg_write_C_MEM.eq(reg_write_C_EX),
             mem_to_reg_C_MEM.eq(mem_to_reg_C_EX),
-            b_type_MEM.eq(BRANCH_EX),
-            j_type_MEM.eq(jump_EX),
+            STORE_MEM.eq(STORE_EX),
+            BRANCH_MEM.eq(BRANCH_EX),
+            jump_MEM.eq(jump_EX),
             take_branch_MEM.eq(branch.take_branch),
             mem_read_C_MEM.eq(mem_read_C_EX),
             mem_write_C_MEM.eq(mem_write_C_EX),
         ]
 
         m.d.comb += self.o_d_addr.eq(alu_out_MEM)
-        m.d.comb += self.o_d_data.eq(r2_MEM)
+        # Send word, lower half-word or lowest byte to data memory
+        m.d.comb += self.o_d_data[:8].eq(r2_MEM[:8])
+        with m.If(STORE_MEM):
+            with m.If(funct3_MEM == 0b010):
+                m.d.comb += self.o_d_data[8:].eq(r2_MEM[8:])
+            with m.Elif(funct3_MEM == 0b001):
+                m.d.comb += self.o_d_data[8:].eq(Cat(r2_MEM[8:16], Repl(0b0, 16)))
+            with m.Elif(funct3_MEM == 0b000):
+                m.d.comb += self.o_d_data[8:].eq(Repl(0b0, 24))
+
         m.d.comb += data_MEM.eq(self.i_data)
         m.d.comb += self.o_d_Rd.eq(mem_read_C_MEM)
         m.d.comb += self.o_d_Wr.eq(mem_write_C_MEM)
 
-        m.d.comb += valid_branch_MEM.eq(b_type_MEM & take_branch_MEM)
-        m.d.comb += valid_jump_MEM.eq(j_type_MEM)
+        m.d.comb += valid_branch_MEM.eq(BRANCH_MEM & take_branch_MEM)
+        m.d.comb += valid_jump_MEM.eq(jump_MEM)
         m.d.comb += pc_source_C_MEM.eq(valid_branch_MEM | valid_jump_MEM)
 
         #
@@ -576,6 +594,45 @@ class Misato(Elaboratable):
                     m.d.comb += Assert(data_val_WB[12:] == (Past(imm_ID, 3)[12:]))
                     m.d.comb += Assert(data_val_WB[:12] == 0)
 
+            # Check if the SB, SH and SW instructions store the
+            # correct data, and calculates the correct address offset.
+            f_store_instr = Signal()
+            m.d.comb += f_store_instr.eq(opcode_ID == Opcode.STORE)
+
+            with m.If(Past(f_store_instr, 2)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      ):
+                m.d.comb += Assert(mem_write_C_MEM)
+                m.d.comb += Assert(~mem_read_C_MEM)
+
+                # Check if the address calculation is correct
+
+                # If there was no forwarding
+                with m.If(Past(fwd.o_fwdA) == 0b00):
+                    m.d.comb += Assert(alu_out_MEM == (Past(r1_EX) + Past(imm_EX))[:32])
+                # If there was forwarding
+                with m.Else():
+                    # Forwarded value comes from the WB stage
+                    with m.If(Past(fwd.o_fwdA) == 0b01):
+                        m.d.comb += Assert(alu_out_MEM == (Past(data_val_WB) + Past(imm_EX))[:32])
+                    # Forwarded value comes from the MEM stage
+                    with m.Else():
+                        m.d.comb += Assert(alu_out_MEM == (Past(alu_out_MEM) + Past(imm_EX))[:32])
+
+                # Check if the correct source register is used
+
+                # If the instruction was SW
+                with m.If(Past(funct3_ID, 2) == 0b010):
+                    m.d.comb += Assert(self.o_d_data == Past(in2_EX))
+                # If the instruction was SH
+                with m.Elif(Past(funct3_ID, 2) == 0b001):
+                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_EX)[:16], Repl(0b0, 16)))
+                # If the instruction was SB
+                with m.Elif(Past(funct3_ID, 2) == 0b000):
+                    m.d.comb += Assert(self.o_d_data == Cat(Past(in2_EX)[:8], Repl(0, 24)))
+
         return m
  
 
@@ -616,6 +673,12 @@ if __name__ == "__main__":
             RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),
             RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),
             RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+        ]
+
+        data = [
+            RV32_I(imm=-1, rs1=0,        rd=1, funct3=Funct3.ADD),
+            RV32_S(imm= 8, rs1=0, rs2=1,       funct3=Funct3.W),
+            RV32_J(imm=-8,               rd=0, opcode=Opcode.JAL),
         ]
 
         imem = Memory(width=32, depth=64, init=data)
