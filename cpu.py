@@ -232,6 +232,7 @@ class Misato(Elaboratable):
         mem_to_reg_C_MEM = Signal()                 # Mem or ALU result to register
         mem_read_C_MEM   = Signal()                 # Read from data memory
         mem_write_C_MEM  = Signal()                 # Write to data memory
+        LOAD_MEM         = Signal()                 # LOAD instruction
         STORE_MEM        = Signal()                 # STORE instruction
         BRANCH_MEM       = Signal()                 # B type instruction
         jump_MEM         = Signal()                 # J type instruction
@@ -247,6 +248,8 @@ class Misato(Elaboratable):
         data_val_WB      = Signal(self.xlen.value)  # WB stage data value
         reg_write_C_WB   = Signal()                 # Write to register file
         mem_to_reg_C_WB  = Signal()                 # Mem or ALU result to register
+        LOAD_WB          = Signal()                 # LOAD instruction
+        funct3_WB        = Signal(Funct3)           # Funct3 field
 
         ##########
         # Stages #
@@ -312,7 +315,7 @@ class Misato(Elaboratable):
         m.d.comb += mem_write_C_ID.eq(STORE_ID)
         m.d.comb += mem_read_C_ID.eq(LOAD_ID)
         m.d.comb += mem_to_reg_C_ID.eq(LOAD_ID)
-        m.d.comb += alu_source_C_ID.eq(OP_IMM_ID | u_instr_ID | STORE_ID)
+        m.d.comb += alu_source_C_ID.eq(OP_IMM_ID | u_instr_ID | LOAD_ID | STORE_ID)
 
         m.d.comb += rp1.addr.eq(rs1_ID)
         m.d.comb += rp2.addr.eq(rs2_ID)
@@ -435,6 +438,7 @@ class Misato(Elaboratable):
             alu_out_MEM.eq(alu_out_EX),
             reg_write_C_MEM.eq(reg_write_C_EX),
             mem_to_reg_C_MEM.eq(mem_to_reg_C_EX),
+            LOAD_MEM.eq(LOAD_EX),
             STORE_MEM.eq(STORE_EX),
             BRANCH_MEM.eq(BRANCH_EX),
             jump_MEM.eq(jump_EX),
@@ -447,11 +451,11 @@ class Misato(Elaboratable):
         # Send word, lower half-word or lowest byte to data memory
         m.d.comb += self.o_d_data[:8].eq(data_out_MEM[:8])
         with m.If(STORE_MEM):
-            with m.If(funct3_MEM == 0b010):
+            with m.If(funct3_MEM == Funct3.W):
                 m.d.comb += self.o_d_data[8:].eq(data_out_MEM[8:])
-            with m.Elif(funct3_MEM == 0b001):
+            with m.Elif(funct3_MEM == Funct3.H):
                 m.d.comb += self.o_d_data[8:].eq(Cat(data_out_MEM[8:16], Repl(0b0, 16)))
-            with m.Elif(funct3_MEM == 0b000):
+            with m.Elif(funct3_MEM == Funct3.B):
                 m.d.comb += self.o_d_data[8:].eq(Repl(0b0, 24))
 
         m.d.comb += self.o_d_Rd.eq(mem_read_C_MEM)
@@ -466,11 +470,25 @@ class Misato(Elaboratable):
         #
         m.d.sync += [
             rd_WB.eq(rd_MEM),
-            data_in_WB.eq(self.i_data),
             alu_out_WB.eq(alu_out_MEM),
             reg_write_C_WB.eq(reg_write_C_MEM),
             mem_to_reg_C_WB.eq(mem_to_reg_C_MEM),
+            LOAD_WB.eq(LOAD_MEM),
+            funct3_WB.eq(funct3_MEM),
         ]
+
+        m.d.comb += data_in_WB[:8].eq(self.i_data[:8])
+        with m.If(LOAD_WB):
+            with m.If(funct3_WB == Funct3.W):
+                m.d.comb += data_in_WB[8:].eq(self.i_data[8:])
+            with m.Elif(funct3_WB == Funct3.H):
+                m.d.comb += data_in_WB[8:].eq(Cat(self.i_data[8:16], Repl(self.i_data[15], 16)))
+            with m.Elif(funct3_WB == Funct3.HU):
+                m.d.comb += data_in_WB[8:].eq(Cat(self.i_data[8:16], Repl(0b0, 16)))
+            with m.Elif(funct3_WB == Funct3.B):
+                m.d.comb += data_in_WB[8:].eq(Repl(self.i_data[7], 24))
+            with m.Elif(funct3_WB == Funct3.BU):
+                m.d.comb += data_in_WB[8:].eq(Repl(0b0, 24))
 
         m.d.comb += data_val_WB.eq(Mux(mem_to_reg_C_WB, data_in_WB, alu_out_WB))
 
@@ -501,6 +519,7 @@ class Misato(Elaboratable):
             # Check that we never write to register 0
             with m.If(reg_write_C_WB):
                 m.d.comb += Assert(rd_WB != 0)
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
 
             # Check that we always assert the trap signal
             # in the next clock cycle whenever we encounter
@@ -603,6 +622,17 @@ class Misato(Elaboratable):
             f_store_instr = Signal()
             m.d.comb += f_store_instr.eq(opcode_ID == Opcode.STORE)
 
+            # We will use these values to check if a load from 
+            # the same address will return the same value.
+            f_const_addr   = AnyConst(32)
+            f_stored_addr  = Signal(32)
+            f_stored_value = Signal(32)
+            m.d.comb += f_stored_addr.eq(f_const_addr)
+            with m.If(self.o_d_Wr):
+                m.d.sync += f_stored_value.eq(self.o_d_data)
+            with m.If(self.o_d_Rd & (self.o_d_addr == f_stored_addr)):
+                m.d.sync += self.i_data.eq(f_stored_value)
+
             with m.If(Past(f_store_instr, 2)
                       & (~Past(f_rst_sig))
                       & (~Past(f_rst_sig, 2))
@@ -622,14 +652,55 @@ class Misato(Elaboratable):
                 # the correct value of r2.
 
                 # If the instruction was SW
-                with m.If(Past(funct3_ID, 2) == 0b010):
+                with m.If(Past(funct3_ID, 2) == Funct3.W):
                     m.d.comb += Assert(self.o_d_data == Past(in2_fwd_EX))
                 # If the instruction was SH
-                with m.Elif(Past(funct3_ID, 2) == 0b001):
+                with m.Elif(Past(funct3_ID, 2) == Funct3.H):
                     m.d.comb += Assert(self.o_d_data == Cat(Past(in2_fwd_EX)[:16], Repl(0b0, 16)))
                 # If the instruction was SB
-                with m.Elif(Past(funct3_ID, 2) == 0b000):
+                with m.Elif(Past(funct3_ID, 2) == Funct3.B):
                     m.d.comb += Assert(self.o_d_data == Cat(Past(in2_fwd_EX)[:8], Repl(0, 24)))
+
+            # Check if the SB, SH and SW instructions store the
+            # correct data, and calculates the correct address offset.
+            f_load_instr = Signal()
+            m.d.comb += f_load_instr.eq(opcode_ID == Opcode.LOAD)
+
+            with m.If(Past(f_load_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                m.d.comb += Assert(~Past(mem_write_C_MEM))
+                m.d.comb += Assert(Past(mem_read_C_MEM))
+                m.d.comb += Assert(~Past(self.o_d_Wr))
+                m.d.comb += Assert(Past(self.o_d_Rd))
+
+                # Check if the address calculation is correct
+                m.d.comb += Assert(Past(alu_out_MEM) == (Past(in1_EX, 2) + Past(imm_EX, 2))[:32])
+                m.d.comb += Assert(Past(self.o_d_addr) == Past(alu_out_MEM))
+
+                with m.If(Past(self.o_d_addr) == f_stored_addr):
+                    m.d.comb += Assert(self.i_data == f_stored_value)
+                    # If the instruction was LW
+                    with m.If(Past(funct3_ID, 3) == Funct3.W):
+                        m.d.comb += Assert(data_in_WB == f_stored_value)
+                    # If the instruction was LH
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.H):
+                        m.d.comb += Assert(data_in_WB ==
+                                           Cat(f_stored_value[:16], Repl(f_stored_value[15], 16)))
+                    # If the instruction was LHU
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.HU):
+                        m.d.comb += Assert(data_in_WB ==
+                                           Cat(f_stored_value[:16], Repl(0b0, 16)))
+                    # If the instruction was LB
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.B):
+                        m.d.comb += Assert(data_in_WB ==
+                                           Cat(f_stored_value[:8], Repl(f_stored_value[7], 24)))
+                    # If the instruction was LBU
+                    with m.Elif(Past(funct3_ID, 3) == Funct3.BU):
+                        m.d.comb += Assert(data_in_WB == Cat(f_stored_value[:8], Repl(0, 24)))
 
             # Check if the OP-IMM instructions perform the correct
             # ALU operations and store the results in the correct

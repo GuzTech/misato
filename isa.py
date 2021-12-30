@@ -40,14 +40,14 @@ class Format(Enum):
 
 
 class Funct3(Enum):
-    ADD = BEQ  = B = 0b000
-    SLL = BNE  = H = 0b001
-    SLT        = W = 0b010
-    SLTU           = 0b011
-    XOR = BLT      = 0b100
-    SR  = BGE      = 0b101
-    OR  = BLTU     = 0b110
-    AND = BGEU     = 0b111
+    ADD = BEQ  = B  = 0b000
+    SLL = BNE  = H  = 0b001
+    SLT        = W  = 0b010
+    SLTU            = 0b011
+    XOR = BLT  = BU = 0b100
+    SR  = BGE  = HU = 0b101
+    OR  = BLTU      = 0b110
+    AND = BGEU      = 0b111
 
 
 class Funct7(Enum):
