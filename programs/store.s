@@ -1,5 +1,6 @@
+    li ra, 0x80
+    li gp, 0xAA
+    sw gp, 128(zero)
+
 loop:
-    addi sp, sp, 1
-    sw ra, 0(sp)
-    addi ra, ra, 4
     j [loop]

@@ -11,6 +11,7 @@ from amaranth_boards.ulx3s import *
 
 from cpu import *
 from rom import ROM
+from gpio import GPIO
 
 if __name__ == "__main__":
     variants = {
@@ -42,7 +43,8 @@ if __name__ == "__main__":
         data.append(int("%02x%02x%02x%02x" % (w[3], w[2], w[1], w[0]), 16))
 
     top = Module()
-    top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False)
+    top.submodules.cpu  = cpu  = Misato(xlen=XLEN.RV32, with_RVFI=False)
+    top.submodules.gpio = gpio = GPIO()
 
     leds = [platform.request("led", 0),
             platform.request("led", 1),
@@ -54,24 +56,36 @@ if __name__ == "__main__":
             platform.request("led", 7)]
 
     for i in range(len(leds)):
-        top.d.comb += leds[i].eq(cpu.o_reg[i])
+        top.d.comb += leds[i].eq(gpio.o_data[i])
  
     # top.submodules.imem = mem = ROM(data)
     # top.d.comb += cpu.ibus.connect(mem.arb.bus)
 
     imem = Memory(width=32, depth=128, init=data)
+    # imem.attrs["ram_block"] = 1
     top.submodules.imem_r = imem_r = imem.read_port()
     top.d.comb += cpu.i_instr.eq(imem_r.data)
     top.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
 
     dmem = Memory(width=32, depth=128)
+    # dmem.attrs["ram_block"] = 1
     top.submodules.dmem_r = dmem_r = dmem.read_port()
     top.submodules.dmem_w = dmem_w = dmem.write_port()
-    top.d.comb += dmem_r.addr.eq(cpu.o_d_addr[2:])
+    top.d.comb += dmem_r.addr.eq(cpu.o_d_addr)
     top.d.comb += cpu.i_data.eq(dmem_r.data)
-    top.d.comb += dmem_w.addr.eq(cpu.o_d_addr[2:])
-    top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
+    top.d.comb += dmem_w.addr.eq(cpu.o_d_addr)
+    # top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
     top.d.comb += dmem_w.data.eq(cpu.o_d_data)
+
+    # Simple data bus arbiter
+    top.d.comb += gpio.i_data.eq(cpu.o_d_data)
+    with top.If(cpu.o_d_Wr & (cpu.o_d_addr == 0x80)):
+        top.d.comb += gpio.i_w_en.eq(cpu.o_d_Wr)
+        top.d.comb += dmem_w.en.eq(0)
+    with top.Else():
+        top.d.comb += gpio.i_w_en.eq(0)
+        top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
+
 
     # We define our own "sync" clock domain so that we
     # can access the reset signal for simulation.

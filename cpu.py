@@ -495,12 +495,12 @@ class Misato(Elaboratable):
         #
         # Connections to the ports of the CPU
         #
-        m.submodules.out = out = regfile.read_port()
+        # m.submodules.out = out = regfile.read_port()
 
         m.d.comb += [
             self.o_trap.eq(decoder.o_trap),
-            out.addr.eq(2),
-            self.o_reg.eq(out.data),
+            # out.addr.eq(2),
+            # self.o_reg.eq(out.data),
         ]
 
         #

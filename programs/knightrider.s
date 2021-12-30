@@ -11,6 +11,7 @@ left:
     blt ra, t1, [left]
 
     slli sp, sp, 1
+    sw sp, 128(zero)
     beq sp, t0, [right_setup]
     j [left_setup]
 
@@ -22,5 +23,6 @@ right:
     blt ra, t1, [right]
 
     srli sp, sp, 1
+    sw sp, 128(zero)
     beq sp, gp, [left_setup]
     j [right_setup]
