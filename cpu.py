@@ -137,7 +137,7 @@ class Misato(Elaboratable):
         pc_p4_IF         = Signal(self.xlen.value)  # Current program counter value + 4
 
         # Branch stall signals
-        bubble_count_IF  = Signal(2)                # How many NOPs to insert
+        bubble_count_IF  = Signal(2, reset=1)       # How many NOPs to insert
         insert_bubble_IF = Signal()                 # Insert a NOP instruction
         preload_next_IF  = Signal()                 # When to preload next instruction
 
@@ -800,6 +800,44 @@ class Misato(Elaboratable):
                                                (Past(in1_EX, 2).as_signed() >> Past(in2_EX, 2)[:5])[:32])
                 with m.Else():
                     m.d.comb += Assert(~reg_write_C_WB)
+
+            # Check if BRANCH instruction jump to the
+            # correct address if the condition is true.
+            f_branch_instr = Signal()
+            m.d.comb += f_branch_instr.eq(opcode_ID == Opcode.BRANCH)
+
+            with m.If(Past(f_branch_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                # Check if the address is calculated correctly
+                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+                # Check if the program counter is set correctly
+                m.d.comb += Assert(pc_IF == Mux(Past(take_branch_MEM),
+                                                Past(branch_addr_MEM),
+                                                Past(pc_p4_ID, 3)))
+                # Check if the condition is processed correctly
+                with m.Switch(Past(funct3_ID, 3)):
+                    with m.Case(Funct3.BEQ):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) == Past(in2_EX, 2)))
+                    with m.Case(Funct3.BNE):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) != Past(in2_EX, 2)))
+                    with m.Case(Funct3.BLT):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed()))
+                    with m.Case(Funct3.BGE):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2).as_signed() >= Past(in2_EX, 2).as_signed()))
+                    with m.Case(Funct3.BLTU):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) < Past(in2_EX, 2)))
+                    with m.Case(Funct3.BGEU):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) >= Past(in2_EX, 2)))
 
         return m
  
