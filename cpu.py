@@ -495,12 +495,8 @@ class Misato(Elaboratable):
         #
         # Connections to the ports of the CPU
         #
-        # m.submodules.out = out = regfile.read_port()
-
         m.d.comb += [
             self.o_trap.eq(decoder.o_trap),
-            # out.addr.eq(2),
-            # self.o_reg.eq(out.data),
         ]
 
         #
@@ -616,6 +612,26 @@ class Misato(Elaboratable):
                     m.d.comb += Assert(reg_write_C_WB)
                     m.d.comb += Assert(data_val_WB[12:] == (Past(imm_ID, 3)[12:]))
                     m.d.comb += Assert(data_val_WB[:12] == 0)
+
+            # Check if the AUIPC instruction loads the U-type
+            # immediate in the upper 20 bits of the destination
+            # register and sets the lower 12 bits to zero.
+            f_auipc_instr = Signal()
+            m.d.comb += f_auipc_instr.eq(opcode_ID == Opcode.AUIPC)
+
+            with m.If(Past(f_auipc_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                    m.d.comb += Assert(data_val_WB ==
+                                       (Past(pc_ID, 3) +
+                                       Cat(Repl(0b0, 12), Past(imm_ID, 3)[12:]))[:32])
 
             # Check if the SB, SH and SW instructions store the
             # correct data, and calculates the correct address offset.
