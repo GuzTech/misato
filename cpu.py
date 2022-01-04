@@ -26,24 +26,23 @@ class Misato(Elaboratable):
                  with_RVFI=False,
                  formal=False):
         # Configuration
-        self.xlen     = xlen                # Number of bits
-        self.rvfi     = with_RVFI           # Enable RVFI for formal verification
-        self.formal   = formal              # Enable formal verification
+        self.xlen     = xlen               # Number of bits
+        self.rvfi     = with_RVFI          # Enable RVFI for formal verification
+        self.formal   = formal             # Enable formal verification
 
         # Inputs
-        self.i_instr  = Signal(32)          # Fetched instruction (I-mem)
-        self.i_data   = Signal(xlen.value)  # Fetched data (D-mem)
-        self.i_stall  = Signal()            # Stall the CPU
+        self.i_instr  = Signal(32)         # Fetched instruction (I-mem)
+        self.i_data   = Signal(xlen.value) # Fetched data (D-mem)
+        self.i_stall  = Signal()           # Stall the CPU
 
         # Outputs
-        self.o_i_addr = Signal(xlen.value)  # Instruction memory address
-        self.o_i_en   = Signal()            # Read enable
-        self.o_d_addr = Signal(xlen.value)  # Data memory address
-        self.o_d_data = Signal(xlen.value)  # Data memory value to be written
-        self.o_d_Rd   = Signal()            # Read from data memory
-        self.o_d_Wr   = Signal()            # Write to data memory
-        self.o_trap   = Signal()            # CPU encountered an issue
-        self.o_reg    = Signal(xlen.value)  # Debug
+        self.o_i_addr = Signal(xlen.value) # Instruction memory address
+        self.o_i_en   = Signal()           # Read enable
+        self.o_d_addr = Signal(xlen.value) # Data memory address
+        self.o_d_data = Signal(xlen.value) # Data memory value to be written
+        self.o_d_Rd   = Signal()           # Read from data memory
+        self.o_d_Wr   = Signal()           # Write to data memory
+        self.o_trap   = Signal()           # CPU encountered an issue
 
         # RVFI Interface (optional)
         if with_RVFI:
@@ -81,7 +80,6 @@ class Misato(Elaboratable):
             self.o_d_Rd,
             self.o_d_Wr,
             self.o_trap,
-            self.o_reg
         ]
 
         if self.rvfi:
@@ -147,6 +145,7 @@ class Misato(Elaboratable):
         pc_ID            = Signal(self.xlen.value)  # Program counter value
         pc_p4_ID         = Signal(self.xlen.value)  # Current program counter value + 4
         instr_ID         = Signal(self.xlen.value)  # Fetched instruction
+        stall_ID         = Signal()                 # Stall signal
 
         # Instruction decoder signals
         format_ID        = Signal(Format)           # Instruction format
@@ -261,7 +260,7 @@ class Misato(Elaboratable):
         m.d.comb += pc_p4_IF.eq(pc_IF + 4)
         m.d.comb += pc_next_IF.eq(Mux(pc_source_C_MEM,
                                       branch_addr_MEM,
-                                      Mux(pc_mod_instr_ID | preload_next_IF, pc_IF, pc_p4_IF)))
+                                      Mux(pc_mod_instr_ID | preload_next_IF | self.i_stall, pc_IF, pc_p4_IF)))
 
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
@@ -272,17 +271,17 @@ class Misato(Elaboratable):
             m.d.sync += bubble_count_IF.eq(3)
         with m.Elif(insert_bubble_IF):
             m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
-        m.d.comb += insert_bubble_IF.eq(bubble_count_IF > 0)
+        m.d.comb += insert_bubble_IF.eq((bubble_count_IF > 0))
 
         #
         # Instruction decode stage (ID)
         #
         m.d.sync += pc_ID.eq(pc_IF)
         m.d.sync += pc_p4_ID.eq(pc_p4_IF)
-        m.d.comb += instr_ID.eq(Mux(insert_bubble_IF, NOP, self.i_instr))
+        m.d.sync += stall_ID.eq(self.i_stall)
 
+        m.d.comb += instr_ID.eq(Mux(insert_bubble_IF | stall_ID, NOP, self.i_instr))
         m.d.comb += pc_mod_instr_ID.eq(BRANCH_ID | jump_ID)
-
         m.d.comb += JALR_ID.eq(opcode_ID == Opcode.JALR)
 
         m.d.comb += decoder.i_instr.eq(instr_ID)
@@ -531,7 +530,14 @@ class Misato(Elaboratable):
                       (opcode_ID != Opcode.AUIPC) &
                       (opcode_ID != Opcode.LUI)):
                 m.d.comb += Assert(self.o_trap)
-            
+
+            # Check that if i_stall is high that the program
+            # counter stays the same and that bubbles are
+            # inserted in the ID stage.
+            with m.If(self.i_stall):
+                m.d.comb += Assert(Stable(pc_next_IF))
+                m.d.comb += Assert(instr_ID == NOP)
+
             # Check if the JAL instruction jumps to the
             # correct address, and stores the address of
             # the next instruction in the destination
@@ -859,7 +865,7 @@ class Misato(Elaboratable):
  
 
 if __name__ == "__main__":
-    formal = True
+    formal = False
 
     top = Module()
     sync = ClockDomain()
@@ -932,8 +938,13 @@ if __name__ == "__main__":
             yield sync.rst.eq(0)
             yield
             assert not (yield cpu.o_trap)
-            
+
+            for _ in range(3):
+                yield cpu.i_stall.eq(1)
+                yield
+
             for _ in range(50):
+                yield cpu.i_stall.eq(0)
                 yield
                 assert not (yield cpu.o_trap)
 
