@@ -29,15 +29,19 @@ class SoC(Elaboratable):
         imem = Memory(width=32, depth=128, init=self.imem_init)
         dmem = Memory(width=32, depth=128)
 
-        m.submodules.cpu    = cpu    = Misato(xlen=XLEN.RV32, with_RVFI=False)
+        m.submodules.cpu    = cpu    = MisatoWB(xlen=XLEN.RV32)
         m.submodules.gpio   = gpio   = GPIO()
-        m.submodules.imem_r = imem_r = imem.read_port()
+        # m.submodules.imem_r = imem_r = imem.read_port()
+        m.submodules.imem   = imem   = ROM(self.imem_init)
         m.submodules.dmem_r = dmem_r = dmem.read_port()
         m.submodules.dmem_w = dmem_w = dmem.write_port()
 
         # Connect cpu and instruction memory
-        m.d.comb += cpu.i_instr.eq(imem_r.data)
-        m.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
+        # m.d.comb += cpu.i_instr.eq(imem_r.data)
+        # m.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
+        m.d.comb += cpu.ibus.connect(imem.arb.bus)
+
+        # m.d.comb += cpu.i_ack.eq(1)
 
         # Connect cpu write to data bus arbiter
         with m.If(cpu.o_d_addr == 0x80):

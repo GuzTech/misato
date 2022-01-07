@@ -40,6 +40,9 @@ if __name__ == "__main__":
 
     # Build the SoC
     top = Module()
+    sync = ClockDomain()
+    top.domains += sync
+    top.d.comb += sync.clk.eq(platform.request(platform.default_clk))
     top.submodules.soc = soc = SoC(imem_init=data)
 
     # Connect the low 8-bit outputs of the GPIO

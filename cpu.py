@@ -33,9 +33,10 @@ class Misato(Elaboratable):
         # Inputs
         self.i_instr  = Signal(32)         # Fetched instruction (I-mem)
         self.i_data   = Signal(xlen.value) # Fetched data (D-mem)
-        self.i_stall  = Signal()           # Stall the CPU
+        self.i_ack    = Signal()           # ACK instruction read request
 
         # Outputs
+        self.o_req    = Signal()           # Request an instruction read
         self.o_i_addr = Signal(xlen.value) # Instruction memory address
         self.o_i_en   = Signal()           # Read enable
         self.o_d_addr = Signal(xlen.value) # Data memory address
@@ -72,7 +73,8 @@ class Misato(Elaboratable):
         signals = [
             self.i_instr,
             self.i_data,
-            self.i_stall,
+            self.i_req,
+            self.i_ack,
             self.o_i_addr,
             self.o_i_en,
             self.o_d_addr,
@@ -130,6 +132,7 @@ class Misato(Elaboratable):
         #
         # Instruction fetch stage signals (IF)
         #
+        addr_F           = Signal(self.xlen.value)  # Instruction memory address
         pc_IF            = Signal(self.xlen.value)  # Current program counter value
         pc_next_IF       = Signal(self.xlen.value)  # Next program counter value
         pc_p4_IF         = Signal(self.xlen.value)  # Current program counter value + 4
@@ -260,7 +263,7 @@ class Misato(Elaboratable):
         m.d.comb += pc_p4_IF.eq(pc_IF + 4)
         m.d.comb += pc_next_IF.eq(Mux(pc_source_C_MEM,
                                       branch_addr_MEM,
-                                      Mux(pc_mod_instr_ID | preload_next_IF | self.i_stall, pc_IF, pc_p4_IF)))
+                                      Mux(pc_mod_instr_ID | preload_next_IF | (~self.i_ack), pc_IF, pc_p4_IF)))
 
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
@@ -273,14 +276,16 @@ class Misato(Elaboratable):
             m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
         m.d.comb += insert_bubble_IF.eq((bubble_count_IF > 0))
 
+        m.d.comb += self.o_req.eq(~(insert_bubble_IF))
+
         #
         # Instruction decode stage (ID)
         #
         m.d.sync += pc_ID.eq(pc_IF)
         m.d.sync += pc_p4_ID.eq(pc_p4_IF)
-        m.d.sync += stall_ID.eq(self.i_stall)
+        m.d.sync += stall_ID.eq(~self.i_ack)
 
-        m.d.comb += instr_ID.eq(Mux(insert_bubble_IF | stall_ID, NOP, self.i_instr))
+        m.d.comb += instr_ID.eq(Mux(insert_bubble_IF | (~self.i_ack), NOP, self.i_instr))
         m.d.comb += pc_mod_instr_ID.eq(BRANCH_ID | jump_ID)
         m.d.comb += JALR_ID.eq(opcode_ID == Opcode.JALR)
 
@@ -864,13 +869,68 @@ class Misato(Elaboratable):
         return m
  
 
+class MisatoWB(Elaboratable):
+    def __init__(self, xlen: XLEN):
+        # Configuration
+        self.xlen = xlen
+
+        # Bus
+        self.ibus = Interface(addr_width=32,
+                              data_width=32,
+                              features=["stall", "err"])
+
+        # Inputs
+        self.i_data   = Signal(xlen.value) # Fetched data (D-mem)
+
+        # Outputs
+        self.o_d_addr = Signal(xlen.value) # Data memory address
+        self.o_d_data = Signal(xlen.value) # Data memory value to be written
+        self.o_d_Rd   = Signal()           # Read from data memory
+        self.o_d_Wr   = Signal()           # Write to data memory
+        self.o_trap   = Signal()           # CPU encountered an issue
+
+    def elaborate(self, platform: Platform) -> Module:
+        m = Module()
+        m.submodules.cpu = cpu = Misato(self.xlen)
+
+        m.d.comb += [
+            self.o_d_addr.eq(cpu.o_d_addr),
+            self.o_d_data.eq(cpu.o_d_data),
+            self.o_d_Rd.eq(cpu.o_d_Rd),
+            self.o_d_Wr.eq(cpu.o_d_Wr),
+            self.o_trap.eq(cpu.o_trap),
+            cpu.i_data.eq(self.i_data),
+        ]
+
+        rdata = Signal.like(self.ibus.dat_r)
+        with m.If(self.ibus.cyc):
+            with m.If(self.ibus.ack | self.ibus.err | (~cpu.o_req)):
+                m.d.sync += [
+                    self.ibus.cyc.eq(0),
+                    self.ibus.stb.eq(0),
+                    rdata.eq(self.ibus.dat_r)
+                ]
+        with m.Elif(cpu.o_req):
+            m.d.sync += [
+                self.ibus.adr.eq(cpu.o_i_addr),
+                self.ibus.cyc.eq(1),
+                self.ibus.stb.eq(1),
+            ]
+        m.d.comb += self.ibus.sel.eq(0b1111)
+        m.d.comb += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
+        m.d.comb += cpu.i_instr.eq(rdata)
+
+        return m
+
+
 if __name__ == "__main__":
     formal = False
 
     top = Module()
     sync = ClockDomain()
     top.domains += sync
-    top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
+    #top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
+    top.submodules.cpu = cpu = MisatoWB(xlen=XLEN.RV32)
 
     if not formal:
         # Knightrider program
@@ -914,19 +974,19 @@ if __name__ == "__main__":
             RV32_J(imm=-8,               rd=0, opcode=Opcode.JAL),
         ]
 
-        imem = Memory(width=32, depth=64, init=data)
-        top.submodules.imem_r = imem_r = imem.read_port()
+        # imem = Memory(width=32, depth=64, init=data)
+        # top.submodules.imem_r = imem_r = imem.read_port()
+        top.submodules.rom = rom = ROM(data)
+        top.d.comb += cpu.ibus.connect(rom.arb.bus)
 
         dmem = Memory(width=32, depth=16)
         top.submodules.dmem_r = dmem_r = dmem.read_port()
         top.submodules.dmem_w = dmem_w = dmem.write_port()
 
-        top.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
-        # top.d.sync += imem_r.en.eq(cpu.o_i_en)
-        top.d.comb += cpu.i_instr.eq(imem_r.data)
+        # top.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
+        # top.d.comb += cpu.i_instr.eq(imem_r.data)
 
         top.d.comb += dmem_r.addr.eq(cpu.o_d_addr)
-        # top.d.comb += dmem_r.en.eq(cpu.o_d_Rd)
         top.d.comb += cpu.i_data.eq(dmem_r.data)
         top.d.comb += dmem_w.addr.eq(cpu.o_d_addr)
         top.d.comb += dmem_w.en.eq(cpu.o_d_Wr)
@@ -934,19 +994,17 @@ if __name__ == "__main__":
 
         def bench():
             yield sync.rst.eq(1)
+            # yield cpu.i_ack.eq(0)
             yield
             yield sync.rst.eq(0)
+            # yield cpu.i_ack.eq(0)
             yield
             assert not (yield cpu.o_trap)
 
-            for _ in range(3):
-                yield cpu.i_stall.eq(1)
-                yield
-
             for _ in range(50):
-                yield cpu.i_stall.eq(0)
+                # yield cpu.i_ack.eq(1)
                 yield
-                assert not (yield cpu.o_trap)
+                # assert not (yield cpu.o_trap)
 
         sim = Simulator(top)
         sim.add_clock(1e-6)

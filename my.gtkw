@@ -1,10 +1,10 @@
 [*]
 [*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
-[*] Thu Dec 23 22:06:55 2021
+[*] Sun Jan  2 23:36:29 2022
 [*]
 [dumpfile] "/home/oguz286/Projects/FPGA/nmigen/misato/cpu.vcd"
-[dumpfile_mtime] "Thu Dec 23 22:00:18 2021"
-[dumpfile_size] 38188
+[dumpfile_mtime] "Sat Jan  1 14:43:10 2022"
+[dumpfile_size] 19797
 [savefile] "/home/oguz286/Projects/FPGA/nmigen/misato/my.gtkw"
 [timestart] 0
 [size] 1920 1033
@@ -16,17 +16,28 @@
 [sst_width] 236
 [signals_width] 256
 [sst_expanded] 1
-[sst_vpaned_height] 341
+[sst_vpaned_height] 353
 @28
 bench.top.cpu.clk
 bench.top.cpu.rst
 @200
 -=== CPU ===
+@29
+bench.top.cpu.i_stall
+@4022
+^>1 /home/oguz286/Projects/FPGA/nmigen/misato/riscv-filter.py
+bench.top.cpu.i_instr[31:0]
+@28
+bench.top.cpu.insert_bubble_IF
+@22
+bench.top.cpu.pc_ID[31:0]
+@4022
+^>1 /home/oguz286/Projects/FPGA/nmigen/misato/riscv-filter.py
+bench.top.cpu.instr_ID[31:0]
 @22
 [color] 1
-bench.top.cpu.instr_IF[31:0]
-[color] 1
 bench.top.cpu.pc_IF[31:0]
+bench.top.cpu.pc_next_IF[31:0]
 @28
 [color] 1
 bench.top.cpu.pc_source_C_MEM
@@ -35,12 +46,7 @@ bench.top.cpu.pc_source_C_MEM
 bench.top.cpu.branch_addr_MEM[31:0]
 @200
 -=== DECODER ===
-@22
-[color] 2
-bench.top.cpu.decoder.instr[31:0]
 @28
-[color] 2
-bench.top.cpu.decoder.format
 [color] 2
 bench.top.cpu.decoder.opcode
 @24
@@ -50,153 +56,5 @@ bench.top.cpu.decoder.rs1[4:0]
 bench.top.cpu.decoder.rs2[4:0]
 [color] 2
 bench.top.cpu.decoder.rd[4:0]
-@c00420
-[color] 2
-bench.top.cpu.decoder.imm[31:0]
-@28
-[color] 2
-(0)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(1)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(2)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(3)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(4)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(5)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(6)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(7)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(8)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(9)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(10)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(11)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(12)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(13)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(14)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(15)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(16)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(17)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(18)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(19)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(20)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(21)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(22)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(23)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(24)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(25)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(26)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(27)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(28)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(29)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(30)bench.top.cpu.decoder.imm[31:0]
-[color] 2
-(31)bench.top.cpu.decoder.imm[31:0]
-@1401200
--group_end
-@200
--=== ALU ===
-@28
-[color] 3
-bench.top.cpu.alu.i_funct3
-[color] 3
-bench.top.cpu.alu.i_funct7
-@420
-[color] 3
-bench.top.cpu.alu.i_in1[31:0]
-[color] 3
-bench.top.cpu.alu.i_in2[31:0]
-[color] 3
-bench.top.cpu.alu.o_out[31:0]
-@200
--=== BRANCH ===
-@28
-bench.top.cpu.branch.br_insn
-@22
-bench.top.cpu.branch.in1[31:0]
-bench.top.cpu.branch.in2[31:0]
-@28
-bench.top.cpu.branch.take_branch
-@200
--=== FORWARD ===
-@22
-bench.top.cpu.in1_EX[31:0]
-bench.top.cpu.in2_EX[31:0]
-@28
-[color] 7
-bench.top.cpu.fwd.ex_hazard
-[color] 7
-bench.top.cpu.fwd.ex_rs1_hazard
-[color] 7
-bench.top.cpu.fwd.ex_rs2_hazard
-@22
-[color] 7
-bench.top.cpu.fwd.i_rd_MEM[4:0]
-[color] 7
-bench.top.cpu.fwd.i_rd_WB[4:0]
-@28
-[color] 7
-bench.top.cpu.fwd.i_reg_wr_MEM
-[color] 7
-bench.top.cpu.fwd.i_reg_wr_WB
-@22
-[color] 7
-bench.top.cpu.fwd.i_rs1_EX[4:0]
-[color] 7
-bench.top.cpu.fwd.i_rs2_EX[4:0]
-@28
-[color] 7
-bench.top.cpu.fwd.mem_hazard
-[color] 7
-bench.top.cpu.fwd.mem_rs1_hazard
-[color] 7
-bench.top.cpu.fwd.mem_rs2_hazard
-[color] 7
-bench.top.cpu.fwd.o_fwdA[1:0]
-[color] 7
-bench.top.cpu.fwd.o_fwdB[1:0]
-@200
--=== REGS ===
-@420
-bench.top.cpu.wp.memory(0)[31:0]
-[color] 4
-bench.top.cpu.wp.memory(1)[31:0]
-[color] 4
-bench.top.cpu.wp.memory(2)[31:0]
-@24
-[color] 4
-bench.top.cpu.wp.regfile_w_addr[4:0]
-@420
-[color] 4
-bench.top.cpu.wp.regfile_w_data[31:0]
-@28
-[color] 4
-bench.top.cpu.wp.regfile_w_en
 [pattern_trace] 1
 [pattern_trace] 0

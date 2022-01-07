@@ -1,0 +1,24 @@
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 50
+bmc: multiclock off
+
+prove: mode prove
+prove: depth 10
+prove: multiclock off
+
+[engines]
+smtbmc
+
+[script]
+read_ilang rom.il
+#read -formal rom.v
+prep -top top
+
+[files]
+rom.il
+#rom.v
