@@ -53,7 +53,6 @@ class ROM(Elaboratable):
         m.submodules.arb = arb = self.arb
         m.submodules.rp  = rp  = self.data.read_port()
 
-        m.d.sync += arb.bus.dat_r.eq(Mux(arb.bus.cyc & arb.bus.stb & (~arb.bus.ack), rp.data, 0))
         # Always assign the bus address to the read port.
         m.d.comb += rp.addr.eq(arb.bus.adr[2:])
 
@@ -65,6 +64,10 @@ class ROM(Elaboratable):
                 m.d.sync += arb.bus.ack.eq(1)
             with m.If(arb.bus.ack):
                 m.d.sync += arb.bus.ack.eq(0)
+
+        # ROM output is registered on ECP5, so
+        # just combinatorially assign it to dat_r.
+        m.d.comb += arb.bus.dat_r.eq(rp.data)
 
         # # Word-aligned reads.
         # with m.If((arb.bus.adr & 0b11) == 0b00):

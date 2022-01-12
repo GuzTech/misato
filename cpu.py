@@ -268,7 +268,7 @@ class Misato(Elaboratable):
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
         m.d.comb += self.o_i_en.eq(~pc_mod_instr_ID)
-        m.d.comb += self.o_i_addr.eq(pc_IF)
+        m.d.comb += self.o_i_addr.eq(pc_next_IF)
 
         with m.If(pc_mod_instr_ID):
             m.d.sync += bubble_count_IF.eq(3)
@@ -910,6 +910,8 @@ class MisatoWB(Elaboratable):
                     self.ibus.stb.eq(0),
                     rdata.eq(self.ibus.dat_r)
                 ]
+            # with m.Elif(cpu.o_req):
+            #     m.d.sync += self.ibus.adr.eq(cpu.o_i_addr)
         with m.Elif(cpu.o_req):
             m.d.sync += [
                 self.ibus.adr.eq(cpu.o_i_addr),
@@ -963,16 +965,16 @@ if __name__ == "__main__":
             RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
         ]
 
-        data = [
-            RV32_I(imm=-1, rs1=0,        rd=1, funct3=Funct3.ADD),
-            RV32_I(imm= 2, rs1=0,        rd=2, funct3=Funct3.ADD),
-            RV32_I(imm= 3, rs1=0,        rd=3, funct3=Funct3.ADD),
-            RV32_I(imm= 4, rs1=0,        rd=4, funct3=Funct3.ADD),
-            RV32_I(imm= 5, rs1=0,        rd=5, funct3=Funct3.ADD),
-            RV32_I(imm= 6, rs1=0,        rd=6, funct3=Funct3.ADD),
-            RV32_S(imm= 4, rs1=0, rs2=1,       funct3=Funct3.W),
-            RV32_J(imm=-8,               rd=0, opcode=Opcode.JAL),
-        ]
+        # data = [
+        #     RV32_I(imm=-1, rs1=0,        rd=1, funct3=Funct3.ADD),
+        #     RV32_I(imm= 2, rs1=0,        rd=2, funct3=Funct3.ADD),
+        #     RV32_I(imm= 3, rs1=0,        rd=3, funct3=Funct3.ADD),
+        #     RV32_I(imm= 4, rs1=0,        rd=4, funct3=Funct3.ADD),
+        #     RV32_I(imm= 5, rs1=0,        rd=5, funct3=Funct3.ADD),
+        #     RV32_I(imm= 6, rs1=0,        rd=6, funct3=Funct3.ADD),
+        #     RV32_S(imm= 4, rs1=0, rs2=1,       funct3=Funct3.W),
+        #     RV32_J(imm=-8,               rd=0, opcode=Opcode.JAL),
+        # ]
 
         # imem = Memory(width=32, depth=64, init=data)
         # top.submodules.imem_r = imem_r = imem.read_port()
