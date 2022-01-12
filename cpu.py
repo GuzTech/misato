@@ -268,6 +268,7 @@ class Misato(Elaboratable):
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
         m.d.comb += self.o_i_en.eq(~pc_mod_instr_ID)
+        m.d.comb += self.o_i_addr.eq(pc_IF)
         m.d.comb += self.o_i_addr.eq(pc_next_IF)
 
         with m.If(pc_mod_instr_ID):
@@ -276,7 +277,7 @@ class Misato(Elaboratable):
             m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
         m.d.comb += insert_bubble_IF.eq((bubble_count_IF > 0))
 
-        m.d.comb += self.o_req.eq(~(insert_bubble_IF))
+        m.d.sync += self.o_req.eq(~(insert_bubble_IF))
 
         #
         # Instruction decode stage (ID)
@@ -539,73 +540,74 @@ class Misato(Elaboratable):
             # Check that if i_stall is high that the program
             # counter stays the same and that bubbles are
             # inserted in the ID stage.
-            with m.If(self.i_stall):
-                m.d.comb += Assert(Stable(pc_next_IF))
-                m.d.comb += Assert(instr_ID == NOP)
-
-            # Check if the JAL instruction jumps to the
-            # correct address, and stores the address of
-            # the next instruction in the destination
-            # register (unless it is x0).
-            f_jal_instr = Signal()
-            m.d.comb += f_jal_instr.eq(opcode_ID == Opcode.JAL)
-
-            with m.If(Past(f_jal_instr, 3)
-                      & (~Past(f_rst_sig))
-                      & (~Past(f_rst_sig, 2))
-                      & (~Past(f_rst_sig, 3))
-                      & (~Past(f_rst_sig, 4))
-                      ):
-                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
-                # We have to make sure we truncate the result of the addition
-                # or else we will be comparing a 32-bit and 33-bit value, which
-                # can of course fail.
-                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
-                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
-
-                with m.If(rd_WB != 0):
-                    m.d.comb += Assert(reg_write_C_WB)
-                    # Since the CPU is pipelined, pc_IF is always 4 ahead
-                    # of the instruction during the ID stage, so don't add
-                    # 4 to the Past(pc_IF, 3) statement since it's already
-                    # 4 higher.
-                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
-                    m.d.comb += Assert(data_val_WB[0] == 0)
-                with m.Else():
-                    m.d.comb += Assert(reg_write_C_WB == 0)
+#            with m.If(~self.i_ack):
+#                # m.d.comb += Assert(Stable(pc_next_IF))
+#                m.d.comb += Assert(Stable(pc_IF))
+#                m.d.comb += Assert(instr_ID == NOP)
+#
+#            # Check if the JAL instruction jumps to the
+#            # correct address, and stores the address of
+#            # the next instruction in the destination
+#            # register (unless it is x0).
+#            f_jal_instr = Signal()
+#            m.d.comb += f_jal_instr.eq(opcode_ID == Opcode.JAL)
+#
+#            with m.If(Past(f_jal_instr, 3)
+#                      & (~Past(f_rst_sig))
+#                      & (~Past(f_rst_sig, 2))
+#                      & (~Past(f_rst_sig, 3))
+#                      & (~Past(f_rst_sig, 4))
+#                      ):
+#                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+#                # We have to make sure we truncate the result of the addition
+#                # or else we will be comparing a 32-bit and 33-bit value, which
+#                # can of course fail.
+#                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+#                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+#
+#                with m.If(rd_WB != 0):
+#                    m.d.comb += Assert(reg_write_C_WB)
+#                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+#                    # of the instruction during the ID stage, so don't add
+#                    # 4 to the Past(pc_IF, 3) statement since it's already
+#                    # 4 higher.
+#                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+#                    m.d.comb += Assert(data_val_WB[0] == 0)
+#                with m.Else():
+#                    m.d.comb += Assert(reg_write_C_WB == 0)
 
 
             # Check if the JALR instruction jumps to the
             # correct address, and stores the address of
             # the next instruction in the destination
             # register (unless it is x0).
-            f_jalr_instr = Signal()
-            m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
-
-            with m.If(Past(f_jalr_instr, 3)
-                      & (~Past(f_rst_sig))
-                      & (~Past(f_rst_sig, 2))
-                      & (~Past(f_rst_sig, 3))
-                      & (~Past(f_rst_sig, 4))
-                      ):
-                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
-                # We have to make sure we truncate the result of the addition
-                # or else we will be comparing a 32-bit and 33-bit value, which
-                # can of course fail. Also, the LSB of the addition should be 0.
-                m.d.comb += Assert(Past(branch_addr_MEM) == 
-                                   Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
-                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
-
-                with m.If(rd_WB != 0):
-                    m.d.comb += Assert(reg_write_C_WB)
-                    # Since the CPU is pipelined, pc_IF is always 4 ahead
-                    # of the instruction during the ID stage, so don't add
-                    # 4 to the Past(pc_IF, 3) statement since it's already
-                    # 4 higher.
-                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
-                    m.d.comb += Assert(data_val_WB[0] == 0)
-                with m.Else():
-                    m.d.comb += Assert(reg_write_C_WB == 0)
+#            f_jalr_instr = Signal()
+#            m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
+#
+#            with m.If(Past(f_jalr_instr, 3)
+#                      & (~Past(f_rst_sig))
+#                      & (~Past(f_rst_sig, 2))
+#                      & (~Past(f_rst_sig, 3))
+#                      & (~Past(f_rst_sig, 4))
+#                      ):
+#                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+#                # We have to make sure we truncate the result of the addition
+#                # or else we will be comparing a 32-bit and 33-bit value, which
+#                # can of course fail. Also, the LSB of the addition should be 0.
+#                m.d.comb += Assert(Past(branch_addr_MEM) == 
+#                                   Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
+#                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+#
+#                with m.If(rd_WB != 0):
+#                    m.d.comb += Assert(reg_write_C_WB)
+#                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+#                    # of the instruction during the ID stage, so don't add
+#                    # 4 to the Past(pc_IF, 3) statement since it's already
+#                    # 4 higher.
+#                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+#                    m.d.comb += Assert(data_val_WB[0] == 0)
+#                with m.Else():
+#                    m.d.comb += Assert(reg_write_C_WB == 0)
 
             # Check if the LUI instruction loads the U-type
             # immediate in the upper 20 bits of the destination
@@ -830,49 +832,50 @@ class Misato(Elaboratable):
 
             # Check if BRANCH instruction jump to the
             # correct address if the condition is true.
-            f_branch_instr = Signal()
-            m.d.comb += f_branch_instr.eq(opcode_ID == Opcode.BRANCH)
-
-            with m.If(Past(f_branch_instr, 3)
-                      & (~Past(f_rst_sig))
-                      & (~Past(f_rst_sig, 2))
-                      & (~Past(f_rst_sig, 3))
-                      & (~Past(f_rst_sig, 4))
-                      ):
-                # Check if the address is calculated correctly
-                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
-                # Check if the program counter is set correctly
-                m.d.comb += Assert(pc_IF == Mux(Past(take_branch_MEM),
-                                                Past(branch_addr_MEM),
-                                                Past(pc_p4_ID, 3)))
-                # Check if the condition is processed correctly
-                with m.Switch(Past(funct3_ID, 3)):
-                    with m.Case(Funct3.BEQ):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2) == Past(in2_EX, 2)))
-                    with m.Case(Funct3.BNE):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2) != Past(in2_EX, 2)))
-                    with m.Case(Funct3.BLT):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed()))
-                    with m.Case(Funct3.BGE):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2).as_signed() >= Past(in2_EX, 2).as_signed()))
-                    with m.Case(Funct3.BLTU):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2) < Past(in2_EX, 2)))
-                    with m.Case(Funct3.BGEU):
-                        m.d.comb += Assert(Past(take_branch_MEM) ==
-                                           (Past(in1_EX, 2) >= Past(in2_EX, 2)))
+#            f_branch_instr = Signal()
+#            m.d.comb += f_branch_instr.eq(opcode_ID == Opcode.BRANCH)
+#
+#            with m.If(Past(f_branch_instr, 3)
+#                      & (~Past(f_rst_sig))
+#                      & (~Past(f_rst_sig, 2))
+#                      & (~Past(f_rst_sig, 3))
+#                      & (~Past(f_rst_sig, 4))
+#                      ):
+#                # Check if the address is calculated correctly
+#                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+#                # Check if the program counter is set correctly
+#                m.d.comb += Assert(pc_IF == Mux(Past(take_branch_MEM),
+#                                                Past(branch_addr_MEM),
+#                                                Past(pc_p4_ID, 3)))
+#                # Check if the condition is processed correctly
+#                with m.Switch(Past(funct3_ID, 3)):
+#                    with m.Case(Funct3.BEQ):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2) == Past(in2_EX, 2)))
+#                    with m.Case(Funct3.BNE):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2) != Past(in2_EX, 2)))
+#                    with m.Case(Funct3.BLT):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed()))
+#                    with m.Case(Funct3.BGE):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2).as_signed() >= Past(in2_EX, 2).as_signed()))
+#                    with m.Case(Funct3.BLTU):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2) < Past(in2_EX, 2)))
+#                    with m.Case(Funct3.BGEU):
+#                        m.d.comb += Assert(Past(take_branch_MEM) ==
+#                                           (Past(in1_EX, 2) >= Past(in2_EX, 2)))
 
         return m
  
 
 class MisatoWB(Elaboratable):
-    def __init__(self, xlen: XLEN):
+    def __init__(self, xlen: XLEN, formal=False):
         # Configuration
-        self.xlen = xlen
+        self.xlen   = xlen
+        self.formal = formal
 
         # Bus
         self.ibus = Interface(addr_width=32,
@@ -889,9 +892,24 @@ class MisatoWB(Elaboratable):
         self.o_d_Wr   = Signal()           # Write to data memory
         self.o_trap   = Signal()           # CPU encountered an issue
 
+    def ports(self) -> List[Signal]:
+        return [
+            self.ibus.stb,
+            self.ibus.cyc,
+            self.ibus.ack,
+            self.ibus.adr,
+            self.ibus.dat_r,
+            self.i_data,
+            self.o_d_addr,
+            self.o_d_data,
+            self.o_d_Rd,
+            self.o_d_Wr,
+            self.o_trap,
+        ]
+
     def elaborate(self, platform: Platform) -> Module:
         m = Module()
-        m.submodules.cpu = cpu = Misato(self.xlen)
+        m.submodules.cpu = cpu = Misato(xlen=self.xlen, formal=self.formal)
 
         m.d.comb += [
             self.o_d_addr.eq(cpu.o_d_addr),
@@ -910,14 +928,13 @@ class MisatoWB(Elaboratable):
                     self.ibus.stb.eq(0),
                     rdata.eq(self.ibus.dat_r)
                 ]
-            # with m.Elif(cpu.o_req):
-            #     m.d.sync += self.ibus.adr.eq(cpu.o_i_addr)
         with m.Elif(cpu.o_req):
             m.d.sync += [
                 self.ibus.adr.eq(cpu.o_i_addr),
                 self.ibus.cyc.eq(1),
                 self.ibus.stb.eq(1),
             ]
+
         m.d.comb += self.ibus.sel.eq(0b1111)
         m.d.sync += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
         m.d.comb += cpu.i_instr.eq(rdata)
@@ -926,43 +943,45 @@ class MisatoWB(Elaboratable):
 
 
 if __name__ == "__main__":
-    formal = False
+    formal = True
 
     top = Module()
     sync = ClockDomain()
     top.domains += sync
     #top.submodules.cpu = cpu = Misato(xlen=XLEN.RV32, with_RVFI=False, formal=formal)
-    top.submodules.cpu = cpu = MisatoWB(xlen=XLEN.RV32)
+    top.submodules.cpu = cpu = MisatoWB(xlen=XLEN.RV32, formal=formal)
 
     if not formal:
         # Knightrider program
         data = [
             # Setup
-            RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),
-            RV32_I(imm= 0x01, rs1=0,        rd=3, funct3=Funct3.ADD),
-            RV32_I(imm= 0x80, rs1=0,        rd=5, funct3=Funct3.ADD),
+            RV32_I(imm= 0x01, rs1=0,        rd=2, funct3=Funct3.ADD),   # 0x00
+            RV32_I(imm= 0x01, rs1=0,        rd=3, funct3=Funct3.ADD),   # 0x04
+            RV32_I(imm= 0x80, rs1=0,        rd=5, funct3=Funct3.ADD),   # 0x08
 
             # Left setup
-            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
-            RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),   # 0x0C
+            #RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI), # 0x10
+            RV32_I(imm= 0x00, rs1=0,        rd=6, funct3=Funct3.ADD),   # 0x10
 
             # Left
-            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
-            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
-            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SLL),
-            RV32_B(imm= 0x08, rs1=2, rs2=5,       funct3=Funct3.BEQ),
-            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),   # 0x14
+            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),   # 0x18
+            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SLL),   # 0x1C
+            RV32_B(imm= 0x08, rs1=2, rs2=5,       funct3=Funct3.BEQ),   # 0x20
+            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),  # 0x24
 
             # Right setup
-            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),
-            RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),
+            RV32_I(imm= 0x00, rs1=0,        rd=1, funct3=Funct3.ADD),   # 0x28
+            # RV32_U(imm= 0x50,               rd=6, opcode=U_Instr.LUI),  # 0x2C
+            RV32_I(imm= 0x00, rs1=0,        rd=6, funct3=Funct3.ADD),   # 0x2C
 
             # Right
-            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),
-            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),
-            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),
-            RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),
-            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),
+            RV32_I(imm= 0x01, rs1=1,        rd=1, funct3=Funct3.ADD),   # 0x30
+            RV32_B(imm=-0x04, rs1=1, rs2=6,       funct3=Funct3.BLT),   # 0x34
+            RV32_I(imm= 0x01, rs1=2,        rd=2, funct3=Funct3.SR),    # 0x38
+            RV32_B(imm=-0x30, rs1=2, rs2=3,       funct3=Funct3.BEQ),   # 0x3C
+            RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),  # 0x40
         ]
 
         # data = [
@@ -981,7 +1000,7 @@ if __name__ == "__main__":
         top.submodules.rom = rom = ROM(data)
         top.d.comb += cpu.ibus.connect(rom.arb.bus)
 
-        dmem = Memory(width=32, depth=128)
+        dmem = Memory(width=32, depth=256)
         top.submodules.dmem_r = dmem_r = dmem.read_port()
         top.submodules.dmem_w = dmem_w = dmem.write_port()
 
@@ -996,17 +1015,14 @@ if __name__ == "__main__":
 
         def bench():
             yield sync.rst.eq(1)
-            # yield cpu.i_ack.eq(0)
             yield
             yield sync.rst.eq(0)
-            # yield cpu.i_ack.eq(0)
             yield
             assert not (yield cpu.o_trap)
 
-            for _ in range(50):
-                # yield cpu.i_ack.eq(1)
+            for _ in range(1000):
                 yield
-                # assert not (yield cpu.o_trap)
+                assert not (yield cpu.o_trap)
 
         sim = Simulator(top)
         sim.add_clock(1e-6)
