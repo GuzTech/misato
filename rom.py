@@ -51,9 +51,9 @@ class ROM(Elaboratable):
         m = Module()
 
         m.submodules.arb = arb = self.arb
-        m.submodules.rp = rp = self.data.read_port()
+        m.submodules.rp  = rp  = self.data.read_port()
 
-        m.d.comb += arb.bus.dat_r.eq(Mux(arb.bus.cyc & arb.bus.stb, rp.data, 0))
+        m.d.sync += arb.bus.dat_r.eq(Mux(arb.bus.cyc & arb.bus.stb & (~arb.bus.ack), rp.data, 0))
         # Always assign the bus address to the read port.
         m.d.comb += rp.addr.eq(arb.bus.adr[2:])
 
@@ -61,18 +61,18 @@ class ROM(Elaboratable):
         with m.If(ResetSignal()):
             m.d.sync += arb.bus.ack.eq(0)
         with m.Else():
-            with m.If(arb.bus.ack):
-                m.d.sync += arb.bus.ack.eq(0)
             with m.If(arb.bus.cyc & arb.bus.stb):
                 m.d.sync += arb.bus.ack.eq(1)
+            with m.If(arb.bus.ack):
+                m.d.sync += arb.bus.ack.eq(0)
 
-        # Word-aligned reads.
-        with m.If((arb.bus.adr & 0b11) == 0b00):
-            m.d.comb += arb.bus.dat_r.eq(rp.data)
-        # Un-aligned reads.
-        with m.Else():
-            m.d.comb += arb.bus.dat_r.eq(
-                rp.data << ((arb.bus.adr & 0b11) << 3))
+        # # Word-aligned reads.
+        # with m.If((arb.bus.adr & 0b11) == 0b00):
+        #     m.d.comb += arb.bus.dat_r.eq(rp.data)
+        # # Un-aligned reads.
+        # with m.Else():
+        #     m.d.comb += arb.bus.dat_r.eq(
+        #         rp.data << ((arb.bus.adr & 0b11) << 3))
 
         return m
 

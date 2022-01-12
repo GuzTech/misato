@@ -917,7 +917,7 @@ class MisatoWB(Elaboratable):
                 self.ibus.stb.eq(1),
             ]
         m.d.comb += self.ibus.sel.eq(0b1111)
-        m.d.comb += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
+        m.d.sync += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
         m.d.comb += cpu.i_instr.eq(rdata)
 
         return m
@@ -979,7 +979,7 @@ if __name__ == "__main__":
         top.submodules.rom = rom = ROM(data)
         top.d.comb += cpu.ibus.connect(rom.arb.bus)
 
-        dmem = Memory(width=32, depth=16)
+        dmem = Memory(width=32, depth=128)
         top.submodules.dmem_r = dmem_r = dmem.read_port()
         top.submodules.dmem_w = dmem_w = dmem.write_port()
 

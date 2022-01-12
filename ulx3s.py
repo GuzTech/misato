@@ -56,7 +56,14 @@ if __name__ == "__main__":
             platform.request("led", 6),
             platform.request("led", 7)]
 
-    for i in range(len(leds)):
+    for i in range(2):#len(leds)):
         top.d.comb += leds[i].eq(soc.o_gpio[i])
+
+    # with top.If(soc.o_ack):
+    top.d.sync += leds[7].eq(soc.o_addr[4])
+    top.d.sync += leds[6].eq(soc.o_addr[3])
+    top.d.sync += leds[5].eq(soc.o_addr[2])
+    top.d.sync += leds[4].eq(soc.o_addr[1])
+    top.d.sync += leds[3].eq(soc.o_addr[0])
 
     platform.build(top, do_program=True, nextpnr_opts="--timing-allow-fail")

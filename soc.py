@@ -19,6 +19,8 @@ class SoC(Elaboratable):
         # Outputs
         self.o_gpio    = Signal(32)
         self.o_trap    = Signal()
+        self.o_ack     = Signal()
+        self.o_addr    = Signal(5)
 
         # Configuration
         self.imem_init = imem_init
@@ -26,7 +28,7 @@ class SoC(Elaboratable):
     def elaborate(self, platform: Platform) -> Module:
         m = Module()
 
-        imem = Memory(width=32, depth=128, init=self.imem_init)
+        # imem = Memory(width=32, depth=128, init=self.imem_init)
         dmem = Memory(width=32, depth=128)
 
         m.submodules.cpu    = cpu    = MisatoWB(xlen=XLEN.RV32)
@@ -40,8 +42,6 @@ class SoC(Elaboratable):
         # m.d.comb += cpu.i_instr.eq(imem_r.data)
         # m.d.comb += imem_r.addr.eq(cpu.o_i_addr[2:])
         m.d.comb += cpu.ibus.connect(imem.arb.bus)
-
-        # m.d.comb += cpu.i_ack.eq(1)
 
         # Connect cpu write to data bus arbiter
         with m.If(cpu.o_d_addr == 0x80):
@@ -60,5 +60,7 @@ class SoC(Elaboratable):
 
         m.d.comb += self.o_gpio.eq(gpio.o_data)
         m.d.comb += self.o_trap.eq(cpu.o_trap)
+        m.d.comb += self.o_ack.eq(cpu.ibus.ack)
+        m.d.comb += self.o_addr.eq(cpu.ibus.adr[2:7])
 
         return m
