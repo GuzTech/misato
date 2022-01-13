@@ -67,7 +67,7 @@ class ROM(Elaboratable):
 
         # ROM output is registered on ECP5, so
         # just combinatorially assign it to dat_r.
-        m.d.comb += arb.bus.dat_r.eq(rp.data)
+        m.d.sync += arb.bus.dat_r.eq(rp.data)
 
         # # Word-aligned reads.
         # with m.If((arb.bus.adr & 0b11) == 0b00):

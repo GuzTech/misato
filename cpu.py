@@ -544,70 +544,80 @@ class Misato(Elaboratable):
 #                # m.d.comb += Assert(Stable(pc_next_IF))
 #                m.d.comb += Assert(Stable(pc_IF))
 #                m.d.comb += Assert(instr_ID == NOP)
-#
-#            # Check if the JAL instruction jumps to the
-#            # correct address, and stores the address of
-#            # the next instruction in the destination
-#            # register (unless it is x0).
-#            f_jal_instr = Signal()
-#            m.d.comb += f_jal_instr.eq(opcode_ID == Opcode.JAL)
-#
-#            with m.If(Past(f_jal_instr, 3)
-#                      & (~Past(f_rst_sig))
-#                      & (~Past(f_rst_sig, 2))
-#                      & (~Past(f_rst_sig, 3))
-#                      & (~Past(f_rst_sig, 4))
-#                      ):
-#                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
-#                # We have to make sure we truncate the result of the addition
-#                # or else we will be comparing a 32-bit and 33-bit value, which
-#                # can of course fail.
-#                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
-#                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
-#
-#                with m.If(rd_WB != 0):
-#                    m.d.comb += Assert(reg_write_C_WB)
-#                    # Since the CPU is pipelined, pc_IF is always 4 ahead
-#                    # of the instruction during the ID stage, so don't add
-#                    # 4 to the Past(pc_IF, 3) statement since it's already
-#                    # 4 higher.
-#                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
-#                    m.d.comb += Assert(data_val_WB[0] == 0)
-#                with m.Else():
-#                    m.d.comb += Assert(reg_write_C_WB == 0)
+
+            # Check if the JAL instruction jumps to the
+            # correct address, and stores the address of
+            # the next instruction in the destination
+            # register (unless it is x0).
+            f_jal_instr = Signal()
+            m.d.comb += f_jal_instr.eq(opcode_ID == Opcode.JAL)
+
+            with m.If(Past(f_jal_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+                # We have to make sure we truncate the result of the addition
+                # or else we will be comparing a 32-bit and 33-bit value, which
+                # can of course fail.
+                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+                    # of the instruction during the ID stage, so don't add
+                    # 4 to the Past(pc_IF, 3) statement since it's already
+                    # 4 higher.
+                    # m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+
+                    # With Wishbone classic, it takes 3 clock cycles to
+                    # get a new instruction. Until an ACK is received,
+                    # pc_IF remains stable, so add 4.
+                    m.d.comb += Assert(data_val_WB == ((Past(pc_IF, 3) + 4)[:32]))
+                    m.d.comb += Assert(data_val_WB[0] == 0)
+                with m.Else():
+                    m.d.comb += Assert(reg_write_C_WB == 0)
 
 
             # Check if the JALR instruction jumps to the
             # correct address, and stores the address of
             # the next instruction in the destination
             # register (unless it is x0).
-#            f_jalr_instr = Signal()
-#            m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
-#
-#            with m.If(Past(f_jalr_instr, 3)
-#                      & (~Past(f_rst_sig))
-#                      & (~Past(f_rst_sig, 2))
-#                      & (~Past(f_rst_sig, 3))
-#                      & (~Past(f_rst_sig, 4))
-#                      ):
-#                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
-#                # We have to make sure we truncate the result of the addition
-#                # or else we will be comparing a 32-bit and 33-bit value, which
-#                # can of course fail. Also, the LSB of the addition should be 0.
-#                m.d.comb += Assert(Past(branch_addr_MEM) == 
-#                                   Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
-#                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
-#
-#                with m.If(rd_WB != 0):
-#                    m.d.comb += Assert(reg_write_C_WB)
-#                    # Since the CPU is pipelined, pc_IF is always 4 ahead
-#                    # of the instruction during the ID stage, so don't add
-#                    # 4 to the Past(pc_IF, 3) statement since it's already
-#                    # 4 higher.
-#                    m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
-#                    m.d.comb += Assert(data_val_WB[0] == 0)
-#                with m.Else():
-#                    m.d.comb += Assert(reg_write_C_WB == 0)
+            f_jalr_instr = Signal()
+            m.d.comb += f_jalr_instr.eq(opcode_ID == Opcode.JALR)
+
+            with m.If(Past(f_jalr_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                m.d.comb += Assert(pc_IF == Past(branch_addr_MEM))
+                # We have to make sure we truncate the result of the addition
+                # or else we will be comparing a 32-bit and 33-bit value, which
+                # can of course fail. Also, the LSB of the addition should be 0.
+                m.d.comb += Assert(Past(branch_addr_MEM) == 
+                                   Cat(0b0, ((Past(r1_EX, 2) + Past(imm_ID, 3))[1:32])))
+                m.d.comb += Assert(rd_WB == Past(rd_ID, 3))
+
+                with m.If(rd_WB != 0):
+                    m.d.comb += Assert(reg_write_C_WB)
+                    # Since the CPU is pipelined, pc_IF is always 4 ahead
+                    # of the instruction during the ID stage, so don't add
+                    # 4 to the Past(pc_IF, 3) statement since it's already
+                    # 4 higher.
+                    # m.d.comb += Assert(data_val_WB == (Past(pc_IF, 3) + 0))
+
+                    # With Wishbone classic, it takes 3 clock cycles to
+                    # get a new instruction. Until an ACK is received,
+                    # pc_IF remains stable, so add 4.
+                    m.d.comb += Assert(data_val_WB == ((Past(pc_IF, 3) + 4)[:32]))
+                    m.d.comb += Assert(data_val_WB[0] == 0)
+                with m.Else():
+                    m.d.comb += Assert(reg_write_C_WB == 0)
 
             # Check if the LUI instruction loads the U-type
             # immediate in the upper 20 bits of the destination
@@ -832,41 +842,45 @@ class Misato(Elaboratable):
 
             # Check if BRANCH instruction jump to the
             # correct address if the condition is true.
-#            f_branch_instr = Signal()
-#            m.d.comb += f_branch_instr.eq(opcode_ID == Opcode.BRANCH)
-#
-#            with m.If(Past(f_branch_instr, 3)
-#                      & (~Past(f_rst_sig))
-#                      & (~Past(f_rst_sig, 2))
-#                      & (~Past(f_rst_sig, 3))
-#                      & (~Past(f_rst_sig, 4))
-#                      ):
-#                # Check if the address is calculated correctly
-#                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
-#                # Check if the program counter is set correctly
-#                m.d.comb += Assert(pc_IF == Mux(Past(take_branch_MEM),
-#                                                Past(branch_addr_MEM),
-#                                                Past(pc_p4_ID, 3)))
-#                # Check if the condition is processed correctly
-#                with m.Switch(Past(funct3_ID, 3)):
-#                    with m.Case(Funct3.BEQ):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2) == Past(in2_EX, 2)))
-#                    with m.Case(Funct3.BNE):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2) != Past(in2_EX, 2)))
-#                    with m.Case(Funct3.BLT):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed()))
-#                    with m.Case(Funct3.BGE):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2).as_signed() >= Past(in2_EX, 2).as_signed()))
-#                    with m.Case(Funct3.BLTU):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2) < Past(in2_EX, 2)))
-#                    with m.Case(Funct3.BGEU):
-#                        m.d.comb += Assert(Past(take_branch_MEM) ==
-#                                           (Past(in1_EX, 2) >= Past(in2_EX, 2)))
+            f_branch_instr = Signal()
+            m.d.comb += f_branch_instr.eq(opcode_ID == Opcode.BRANCH)
+
+            with m.If(Past(f_branch_instr, 3)
+                      & (~Past(f_rst_sig))
+                      & (~Past(f_rst_sig, 2))
+                      & (~Past(f_rst_sig, 3))
+                      & (~Past(f_rst_sig, 4))
+                      ):
+                # Check if the address is calculated correctly
+                m.d.comb += Assert(Past(branch_addr_MEM) == ((Past(pc_ID, 3) + Past(imm_ID, 3))[:32]))
+                # Check if the program counter is set correctly
+                # m.d.comb += Assert(pc_IF == Mux(Past(take_branch_MEM),
+                #                                 Past(branch_addr_MEM),
+                #                                 Past(pc_p4_ID, 3)))
+
+                # m.d.comb += Assert(pc_next_IF == Mux(Past(take_branch_MEM),
+                #                                      Past(branch_addr_MEM),
+                #                                      Past(pc_p4_ID, 3)))
+                # Check if the condition is processed correctly
+                with m.Switch(Past(funct3_ID, 3)):
+                    with m.Case(Funct3.BEQ):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) == Past(in2_EX, 2)))
+                    with m.Case(Funct3.BNE):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) != Past(in2_EX, 2)))
+                    with m.Case(Funct3.BLT):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2).as_signed() < Past(in2_EX, 2).as_signed()))
+                    with m.Case(Funct3.BGE):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2).as_signed() >= Past(in2_EX, 2).as_signed()))
+                    with m.Case(Funct3.BLTU):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) < Past(in2_EX, 2)))
+                    with m.Case(Funct3.BGEU):
+                        m.d.comb += Assert(Past(take_branch_MEM) ==
+                                           (Past(in1_EX, 2) >= Past(in2_EX, 2)))
 
         return m
  

@@ -1,0 +1,22 @@
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 10
+bmc: multiclock off
+
+prove: mode prove
+prove: depth 10
+prove: multiclock off
+
+[engines]
+smtbmc
+
+[script]
+read_ilang soc.il
+prep -top top
+
+[files]
+soc.il
