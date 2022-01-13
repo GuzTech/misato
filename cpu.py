@@ -268,7 +268,7 @@ class Misato(Elaboratable):
         m.d.sync += pc_IF.eq(pc_next_IF)
         m.d.comb += preload_next_IF.eq(bubble_count_IF > 1)
         m.d.comb += self.o_i_en.eq(~pc_mod_instr_ID)
-        m.d.comb += self.o_i_addr.eq(pc_IF)
+        # m.d.comb += self.o_i_addr.eq(pc_IF)
         m.d.comb += self.o_i_addr.eq(pc_next_IF)
 
         with m.If(pc_mod_instr_ID):
@@ -277,14 +277,15 @@ class Misato(Elaboratable):
             m.d.sync += bubble_count_IF.eq(bubble_count_IF - 1)
         m.d.comb += insert_bubble_IF.eq((bubble_count_IF > 0))
 
-        m.d.sync += self.o_req.eq(~(insert_bubble_IF))
+        # m.d.comb += self.o_req.eq((~insert_bubble_IF))
+        m.d.comb += self.o_req.eq((~insert_bubble_IF) & (~pc_mod_instr_ID))
 
         #
         # Instruction decode stage (ID)
         #
         m.d.sync += pc_ID.eq(pc_IF)
         m.d.sync += pc_p4_ID.eq(pc_p4_IF)
-        m.d.sync += stall_ID.eq(~self.i_ack)
+        # m.d.sync += stall_ID.eq(~self.i_ack)
 
         m.d.comb += instr_ID.eq(Mux(insert_bubble_IF | (~self.i_ack), NOP, self.i_instr))
         m.d.comb += pc_mod_instr_ID.eq(BRANCH_ID | jump_ID)
@@ -942,6 +943,7 @@ class MisatoWB(Elaboratable):
                     self.ibus.stb.eq(0),
                     rdata.eq(self.ibus.dat_r)
                 ]
+                # m.d.comb += rdata.eq(self.ibus.dat_r)
         with m.Elif(cpu.o_req):
             m.d.sync += [
                 self.ibus.adr.eq(cpu.o_i_addr),
@@ -951,6 +953,7 @@ class MisatoWB(Elaboratable):
 
         m.d.comb += self.ibus.sel.eq(0b1111)
         m.d.sync += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
+        # m.d.comb += cpu.i_ack.eq(self.ibus.cyc & self.ibus.ack)
         m.d.comb += cpu.i_instr.eq(rdata)
 
         return m
