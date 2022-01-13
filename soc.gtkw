@@ -1,0 +1,72 @@
+[*]
+[*] GTKWave Analyzer v3.3.111 (w)1999-2020 BSI
+[*] Thu Jan 13 15:27:51 2022
+[*]
+[dumpfile] "/home/oguz286/Projects/FPGA/amaranth/misato/soc.vcd"
+[dumpfile_mtime] "Thu Jan 13 15:25:39 2022"
+[dumpfile_size] 41914
+[savefile] "/home/oguz286/Projects/FPGA/amaranth/misato/soc.gtkw"
+[timestart] 10700000
+[size] 1920 1055
+[pos] -1 -1
+*-21.148926 5580000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] bench.
+[treeopen] bench.top.
+[treeopen] bench.top.soc.
+[treeopen] bench.top.soc.cpu.
+[treeopen] bench.top.soc.cpu.cpu.
+[sst_width] 215
+[signals_width] 272
+[sst_expanded] 1
+[sst_vpaned_height] 309
+@28
+bench.top.soc.cpu.clk
+bench.top.soc.cpu.rst
+@200
+-=== SoC ===
+@28
+bench.top.soc.ibus__stb
+bench.top.soc.ibus__cyc
+@23
+bench.top.soc.ibus__adr[31:0]
+@4022
+^>1 /home/oguz286/Projects/FPGA/amaranth/misato/riscv-filter.py
+bench.top.soc.ibus__dat_r[31:0]
+@28
+bench.top.soc.ibus__ack
+@200
+-=== CPU ===
+@28
+[color] 3
+bench.top.soc.cpu.cpu.o_req
+bench.top.soc.cpu.cpu.i_ack
+bench.top.soc.cpu.cpu.insert_bubble_IF
+@4022
+^>1 /home/oguz286/Projects/FPGA/amaranth/misato/riscv-filter.py
+bench.top.soc.cpu.cpu.i_instr[31:0]
+[color] 1
+^>1 /home/oguz286/Projects/FPGA/amaranth/misato/riscv-filter.py
+bench.top.soc.cpu.cpu.instr_ID[31:0]
+@28
+[color] 2
+bench.top.soc.cpu.cpu.pc_mod_instr_ID
+@22
+bench.top.soc.cpu.cpu.pc_IF[31:0]
+bench.top.soc.cpu.cpu.pc_ID[31:0]
+bench.top.soc.cpu.cpu.pc_EX[31:0]
+bench.top.soc.cpu.cpu.pc_next_IF[31:0]
+bench.top.soc.cpu.cpu.pc_p4_IF[31:0]
+@28
+bench.top.soc.cpu.cpu.pc_source_C_MEM
+bench.top.soc.cpu.cpu.take_branch
+bench.top.soc.cpu.cpu.take_branch_MEM
+bench.top.soc.cpu.cpu.valid_branch_MEM
+bench.top.soc.cpu.cpu.BRANCH_ID
+bench.top.soc.cpu.cpu.BRANCH_EX
+bench.top.soc.cpu.cpu.BRANCH_MEM
+@22
+bench.top.soc.cpu.cpu.branch_addr_EX[31:0]
+bench.top.soc.cpu.cpu.branch_addr_t_EX[31:0]
+bench.top.soc.cpu.cpu.branch_addr_MEM[31:0]
+[pattern_trace] 1
+[pattern_trace] 0
