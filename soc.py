@@ -65,6 +65,11 @@ class SoC(Elaboratable):
 
 
 if __name__ == "__main__":
+    formal = False
+
+    parser = main_parser()
+    args = parser.parse_args()
+
     # Knightrider program
     data = [
         # Setup
@@ -97,8 +102,36 @@ if __name__ == "__main__":
         RV32_J(imm=-0x18,               rd=0, opcode=J_Instr.JAL),  # 0x40
     ]
 
+    data = [
+        0x0800_0093, # 0x00: li ra, 0x80
+        0x0000_0113, # 0x04: li sp, 0
+        # start:
+        0x0011_0113, # 0x08: addi sp, sp, 1
+        0x0020_A023, # 0x0C: sw sp, 0(ra)
+        0xFF9F_F06F, # 0x10: j [start]
+    ]
+
     top = Module()
-    top.submodules.soc = soc = SoC(data, formal=True)
-    parser = main_parser()
-    args = parser.parse_args()
+    sync = ClockDomain()
+    top.domains += sync
+    top.submodules.soc = soc = SoC(data, formal=formal)
+
+    if not formal:
+        def bench():
+            yield sync.rst.eq(1)
+            yield
+            yield sync.rst.eq(0)
+            yield
+            assert not (yield soc.o_trap)
+
+            for _ in range(50):
+                yield
+                assert not (yield soc.o_trap)
+
+        sim = Simulator(top)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(bench)
+        with sim.write_vcd("soc.vcd"):
+            sim.run()
+
     main_runner(parser, args, top, ports=[soc.o_gpio])
