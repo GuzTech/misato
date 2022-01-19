@@ -1,0 +1,35 @@
+CAPI=2:
+
+name : ::misato:0
+
+filesets:
+  openlane:
+    files : [params.tcl : {file_type : tclSource}]
+
+targets:
+  default:
+    generate : [misato]
+
+  lint:
+    default_tool : verilator
+    generate : [misato]
+    tools:
+      verilator:
+        mode : lint-only
+    toplevel : top
+
+  sky130:
+    default_tool : openlane
+    filesets : [openlane]
+    generate : [misato]
+    toplevel : top
+
+generate:
+  misato:
+    generator: misatogen
+
+generators:
+  misatogen:
+    interpreter: python3
+    command: misatogen.py
+    description: Create a Verilog description from the Misato Amaranth design
