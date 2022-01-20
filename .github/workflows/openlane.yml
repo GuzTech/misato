@@ -1,5 +1,7 @@
 name: build-openlane-sky130
-on: [push]
+on:
+  push:
+    - main
 jobs:
   build-openlane:
     runs-on: ubuntu-latest
