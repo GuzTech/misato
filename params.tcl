@@ -1,4 +1,4 @@
-set ::env(CLOCK_PERIOD) "20"
+set ::env(CLOCK_PERIOD) "18"
 set ::env(CLOCK_PORT) "clk"
 set ::env(SYNTH_STRATEGY) "DELAY 0"
 set ::env(DESIGN_IS_CORE) 0
