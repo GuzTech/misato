@@ -1,0 +1,23 @@
+name: build-openlane-sky130
+on: [push]
+jobs:
+  build-openlane:
+    runs-on: ubuntu-latest
+    env:
+      REPO : misato
+      VLNV : misato
+    steps:
+      - name: Checkout Misato
+        uses: actions/checkout@v2
+        with:
+          path: misato
+      - name: Install Amaranth and FuseSoC
+        run: |
+          pip3 install amaranth
+          pip3 install amaranth-yosys
+          pip3 install git+git://github.com/amaranth-lang/amaranth-boards.git
+          pip3 install git+git://github.com/amaranth-lang/amaranth-soc.git
+          pip3 install fusesoc
+      - run: echo "EDALIZE_LAUNCHER=el_docker" >> $GITHUB_ENV
+      - run: fusesoc library add $REPO $GITHUB_WORKSPACE/$REPO
+      - run: fusesoc run --target=sky130 $VLNV
